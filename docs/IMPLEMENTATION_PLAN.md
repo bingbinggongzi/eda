@@ -32,25 +32,25 @@ Post-MVP:
 
 | ID | Milestone | Est. Duration | Dependencies | Status |
 |---|---|---:|---|---|
-| M0 | Requirement freeze and interaction baseline | 0.5 day | None | Planned |
+| M0 | Requirement freeze and interaction baseline | 0.5 day | None | Done |
 | M1 | UI shell and project scaffold | 1 day | M0 | Done |
-| M2 | Model and serialization | 1.5 days | M0 | Planned |
+| M2 | Model and serialization | 1.5 days | M0 | Done |
 | M3 | Canvas interaction hardening | 2 days | M1 | In progress |
-| M4 | Core graph items (Node/Port/Edge) | 2 days | M2, M3 | Planned |
-| M5 | Command system (Undo/Redo) | 2 days | M2, M4 | Planned |
+| M4 | Core graph items (Node/Port/Edge) | 2 days | M2, M3 | Done |
+| M5 | Command system (Undo/Redo) | 2 days | M2, M4 | In progress |
 | M6 | Side panel integration | 2 days | M2, M4 | In progress |
-| M7 | Routing and visual polish | 2 days | M4, M6 | Planned |
+| M7 | Routing and visual polish | 2 days | M4, M6 | In progress |
 | M8 | Performance and stability | 1.5 days | M5, M7 | Planned |
-| M9 | Testing and delivery | 1 day | M8 | Planned |
+| M9 | Testing and delivery | 1 day | M8 | In progress |
 
 ## 5. Detailed Breakdown and Acceptance
 
 ### M0 Requirement Freeze and Interaction Baseline
 
 Tasks:
-- [ ] Freeze MVP in/out list
-- [ ] Freeze shortcut list and interaction modes
-- [ ] Freeze visual baseline (grid size, colors, fonts, line width)
+- [x] Freeze MVP in/out list
+- [x] Freeze shortcut list and interaction modes
+- [x] Freeze visual baseline (grid size, colors, fonts, line width)
 
 Deliverables:
 - Updated plan with locked scope
@@ -75,9 +75,9 @@ Acceptance:
 ### M2 Model and Serialization
 
 Tasks:
-- [ ] Implement `Document/Node/Port/Edge` data structures
-- [ ] Add stable ID generation and references
-- [ ] Implement JSON import/export with `schemaVersion`
+- [x] Implement `Document/Node/Port/Edge` data structures
+- [x] Add stable ID generation and references
+- [x] Implement JSON import/export with `schemaVersion`
 - [ ] Add migration entry point for future versions
 
 Deliverables:
@@ -90,8 +90,8 @@ Acceptance:
 
 Tasks:
 - [x] Grid, Ctrl+wheel zoom, middle-button pan, rubber-band select
-- [ ] Zoom limits and zoom status indicator
-- [ ] Grid snapping with toggle
+- [x] Zoom limits and zoom status indicator
+- [x] Grid snapping with toggle
 - [ ] Explicit interaction mode state machine (select/connect/place/pan)
 
 Deliverables:
@@ -103,10 +103,10 @@ Acceptance:
 ### M4 Core Graph Items
 
 Tasks:
-- [ ] Implement structured `NodeItem` layout (title + ports)
-- [ ] Implement `PortItem` direction and connection constraints
-- [ ] Implement data-driven `EdgeItem` rendering
-- [ ] Recompute only related edges on node move
+- [x] Implement structured `NodeItem` layout (title + ports)
+- [x] Implement `PortItem` direction and connection constraints
+- [x] Implement data-driven `EdgeItem` rendering
+- [x] Recompute only related edges on node move
 
 Deliverables:
 - `src/items/*`
@@ -117,9 +117,9 @@ Acceptance:
 ### M5 Command System (Undo/Redo)
 
 Tasks:
-- [ ] Integrate `QUndoStack`
-- [ ] Add commands for add/delete/move node
-- [ ] Add commands for connect/disconnect edge
+- [x] Integrate `QUndoStack`
+- [x] Add commands for add/delete/move node
+- [x] Add commands for connect/disconnect edge
 - [ ] Add merge strategy for grouped actions
 
 Deliverables:
@@ -131,9 +131,9 @@ Acceptance:
 ### M6 Side Panel Integration
 
 Tasks:
-- [ ] Drag from palette to create real nodes
-- [ ] Property panel two-way binding
-- [ ] Project tree and scene selection sync
+- [x] Drag from palette to create real nodes
+- [x] Property panel two-way binding
+- [x] Project tree and scene selection sync
 - [ ] Preserve context on tab/document switch
 
 Deliverables:
@@ -145,9 +145,9 @@ Acceptance:
 ### M7 Routing and Visual Polish
 
 Tasks:
-- [ ] Manhattan edge routing
-- [ ] Hover/selection highlight
-- [ ] Live ghost edge while connecting
+- [x] Manhattan edge routing
+- [x] Hover/selection highlight
+- [x] Live ghost edge while connecting
 - [ ] Alignment guides and port snap feedback
 
 Deliverables:
@@ -173,10 +173,10 @@ Acceptance:
 ### M9 Testing and Delivery
 
 Tasks:
-- [ ] Unit tests for model layer
-- [ ] Regression tests for command layer
-- [ ] Manual smoke checklist
-- [ ] Example project and short user guide
+- [x] Unit tests for model layer
+- [x] Regression tests for command layer
+- [x] Manual smoke checklist
+- [x] Example project and short user guide
 
 Deliverables:
 - `tests/*`, sample project, release notes
@@ -191,14 +191,18 @@ Acceptance:
 - `windeployqt` post-build deployment is integrated
 - Initial UI prototype implemented
 - Project scaffolding files added (`README`, `CONTRIBUTING`, `CHANGELOG`, presets, scripts)
+- Interactive graph editing implemented (`Node/Port/Edge`, drag-drop create, connect preview, move updates)
+- JSON save/load pipeline implemented and bound to menu actions
+- Undo/redo stack integrated for add/move/connect/delete
+- Test target `eda_tests` and smoke checklist added
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Palette drag-drop creates real nodes (M6)
-2. Data-driven `EdgeItem` and node-move link updates (M4)
-3. Port-level connect interaction with live preview (M7)
-4. Minimal model layer and ID mapping pipeline (M2)
-5. First undo commands: add/move/connect (M5)
+1. Add explicit interaction mode state machine in `EditorScene` (M3)
+2. Add grouped command merge strategy for drag bursts and batch edits (M5)
+3. Add tab-level context persistence for multi-document editing (M6)
+4. Add alignment guides and stronger snap feedback (M7)
+5. Add performance stress test harness and optimization pass (M8)
 
 ## 8. Merge Quality Gates
 

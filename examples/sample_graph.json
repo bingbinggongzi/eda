@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "nodes": [
+    {
+      "id": "N_1",
+      "name": "Voter",
+      "ports": [
+        {
+          "direction": "input",
+          "id": "P_1",
+          "name": "in1"
+        },
+        {
+          "direction": "input",
+          "id": "P_2",
+          "name": "in2"
+        },
+        {
+          "direction": "input",
+          "id": "P_3",
+          "name": "in3"
+        },
+        {
+          "direction": "output",
+          "id": "P_4",
+          "name": "out1"
+        }
+      ],
+      "type": "Voter",
+      "w": 120,
+      "h": 72,
+      "x": 180,
+      "y": 220
+    },
+    {
+      "id": "N_2",
+      "name": "Sum",
+      "ports": [
+        {
+          "direction": "input",
+          "id": "P_5",
+          "name": "in1"
+        },
+        {
+          "direction": "input",
+          "id": "P_6",
+          "name": "in2"
+        },
+        {
+          "direction": "output",
+          "id": "P_7",
+          "name": "out1"
+        }
+      ],
+      "type": "Sum",
+      "w": 120,
+      "h": 72,
+      "x": 420,
+      "y": 240
+    },
+    {
+      "id": "N_3",
+      "name": "tm_Node",
+      "ports": [
+        {
+          "direction": "input",
+          "id": "P_8",
+          "name": "in1"
+        },
+        {
+          "direction": "output",
+          "id": "P_9",
+          "name": "out1"
+        }
+      ],
+      "type": "tm_Node",
+      "w": 120,
+      "h": 72,
+      "x": 660,
+      "y": 260
+    }
+  ],
+  "edges": [
+    {
+      "id": "E_1",
+      "fromNodeId": "N_1",
+      "fromPortId": "P_4",
+      "toNodeId": "N_2",
+      "toPortId": "P_5"
+    },
+    {
+      "id": "E_2",
+      "fromNodeId": "N_2",
+      "fromPortId": "P_7",
+      "toNodeId": "N_3",
+      "toPortId": "P_8"
+    }
+  ]
+}

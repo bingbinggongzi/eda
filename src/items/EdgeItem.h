@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QGraphicsPathItem>
+#include <QPointer>
 #include <QString>
 
 class PortItem;
@@ -20,7 +21,7 @@ public:
 
 private:
     QString m_edgeId;
-    PortItem* m_sourcePort = nullptr;
-    PortItem* m_targetPort = nullptr;
+    QPointer<PortItem> m_sourcePort;
+    QPointer<PortItem> m_targetPort;
     QPointF m_previewEnd;
 };

@@ -7,6 +7,11 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - UI shell completed (menu/toolbar/docks/tabbed canvas/palette)
 - Canvas basics available (grid, zoom, pan, selection)
 - Runtime deployment integrated with `windeployqt`
+- Interactive graph editing available:
+- Palette drag-drop node creation
+- Port-to-port edge creation with live preview
+- JSON save/load
+- Undo/redo for add/move/connect/delete
 
 ## Requirements
 
@@ -30,6 +35,13 @@ or:
 .\scripts\run.ps1
 ```
 
+## Run Tests
+
+```powershell
+cmake --build build --config Debug --target eda_tests
+ctest --test-dir build -C Debug --output-on-failure
+```
+
 If CMake cannot find Qt, set:
 
 ```powershell
@@ -41,6 +53,7 @@ $env:CMAKE_PREFIX_PATH="C:\Qt\6.8.3\msvc2022_64"
 - `src/`: application source
 - `docs/`: implementation and design docs
 - `scripts/`: local helper scripts
+- `examples/`: sample graph files
 
 ## Planning
 

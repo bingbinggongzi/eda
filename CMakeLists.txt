@@ -71,6 +71,45 @@ add_executable(eda_ui_prototype
 
 target_link_libraries(eda_ui_prototype PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 
+include(CTest)
+
+if(BUILD_TESTING)
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
+
+    add_executable(eda_tests
+        tests/test_suite.cpp
+        src/model/GraphDocument.h
+        src/model/GraphSerializer.h
+        src/model/GraphSerializer.cpp
+        src/scene/EditorScene.h
+        src/scene/EditorScene.cpp
+        src/items/NodeItem.h
+        src/items/NodeItem.cpp
+        src/items/PortItem.h
+        src/items/PortItem.cpp
+        src/items/EdgeItem.h
+        src/items/EdgeItem.cpp
+        src/commands/DocumentStateCommand.h
+        src/commands/DocumentStateCommand.cpp
+    )
+
+    target_link_libraries(eda_tests PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Test)
+    add_test(NAME eda_tests COMMAND eda_tests)
+
+    if(WIN32 AND QT_VERSION_MAJOR EQUAL 6)
+        get_target_property(_qt_qmake_exe_tests Qt6::qmake IMPORTED_LOCATION)
+        get_filename_component(_qt_bin_dir_tests "${_qt_qmake_exe_tests}" DIRECTORY)
+        find_program(WINDEPLOYQT_EXECUTABLE_TESTS windeployqt HINTS "${_qt_bin_dir_tests}")
+        if(WINDEPLOYQT_EXECUTABLE_TESTS)
+            add_custom_command(TARGET eda_tests POST_BUILD
+                COMMAND "${WINDEPLOYQT_EXECUTABLE_TESTS}" --no-translations --no-compiler-runtime "$<TARGET_FILE:eda_tests>"
+                COMMENT "Deploying Qt runtime for tests with windeployqt"
+                VERBATIM
+            )
+        endif()
+    endif()
+endif()
+
 if(WIN32 AND QT_VERSION_MAJOR EQUAL 6)
     get_target_property(_qt_qmake_exe Qt6::qmake IMPORTED_LOCATION)
     get_filename_component(_qt_bin_dir "${_qt_qmake_exe}" DIRECTORY)
