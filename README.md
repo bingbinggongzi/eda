@@ -48,6 +48,13 @@ Stress run:
 .\scripts\stress.ps1
 ```
 
+## CI
+
+GitHub Actions workflow (`.github/workflows/ci.yml`) runs build + tests on:
+
+- push to `master`
+- pull requests targeting `master`
+
 If CMake cannot find Qt, set:
 
 ```powershell

@@ -1,6 +1,7 @@
 #include "GraphSerializer.h"
 
 #include <QFile>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -83,19 +84,73 @@ bool fromJson(const QJsonObject& o, EdgeData* out) {
     out->fromPortId = o.value(QStringLiteral("fromPortId")).toString();
     out->toNodeId = o.value(QStringLiteral("toNodeId")).toString();
     out->toPortId = o.value(QStringLiteral("toPortId")).toString();
-    return !out->id.isEmpty() && !out->fromPortId.isEmpty() && !out->toPortId.isEmpty();
+    return !out->fromNodeId.isEmpty() && !out->toNodeId.isEmpty();
 }
 
 bool migrateToCurrent(GraphDocument* document, QString* errorMessage) {
     if (!document) {
         return false;
     }
-    if (document->schemaVersion <= 0) {
-        if (errorMessage) {
-            *errorMessage = QStringLiteral("Invalid schemaVersion: %1").arg(document->schemaVersion);
+    if (document->schemaVersion == 0) {
+        // Legacy migration path:
+        // - ensure every node has at least one input and one output port
+        // - backfill edge ids and missing port ids
+        QHash<QString, QString> nodeFirstIn;
+        QHash<QString, QString> nodeFirstOut;
+        int generatedPortCounter = 1;
+
+        for (NodeData& node : document->nodes) {
+            bool hasIn = false;
+            bool hasOut = false;
+            for (const PortData& port : node.ports) {
+                if (port.direction == QStringLiteral("input")) {
+                    hasIn = true;
+                    if (!nodeFirstIn.contains(node.id)) {
+                        nodeFirstIn.insert(node.id, port.id);
+                    }
+                } else if (port.direction == QStringLiteral("output")) {
+                    hasOut = true;
+                    if (!nodeFirstOut.contains(node.id)) {
+                        nodeFirstOut.insert(node.id, port.id);
+                    }
+                }
+            }
+
+            if (!hasIn) {
+                const QString pid = QStringLiteral("P_MIG_%1").arg(generatedPortCounter++);
+                node.ports.push_back(PortData{pid, QStringLiteral("in1"), QStringLiteral("input")});
+                nodeFirstIn.insert(node.id, pid);
+            }
+            if (!hasOut) {
+                const QString pid = QStringLiteral("P_MIG_%1").arg(generatedPortCounter++);
+                node.ports.push_back(PortData{pid, QStringLiteral("out1"), QStringLiteral("output")});
+                nodeFirstOut.insert(node.id, pid);
+            }
         }
-        return false;
+
+        int generatedEdgeCounter = 1;
+        for (EdgeData& edge : document->edges) {
+            if (edge.id.isEmpty()) {
+                edge.id = QStringLiteral("E_MIG_%1").arg(generatedEdgeCounter++);
+            }
+            if (edge.fromPortId.isEmpty()) {
+                edge.fromPortId = nodeFirstOut.value(edge.fromNodeId);
+            }
+            if (edge.toPortId.isEmpty()) {
+                edge.toPortId = nodeFirstIn.value(edge.toNodeId);
+            }
+            if (edge.fromPortId.isEmpty() || edge.toPortId.isEmpty()) {
+                if (errorMessage) {
+                    *errorMessage = QStringLiteral("Migration failed: cannot map edge ports for edge %1").arg(edge.id);
+                }
+                return false;
+            }
+        }
+
+        document->schemaVersion = 1;
+        return true;
     }
+
     if (document->schemaVersion == 1) {
         return true;
     }
@@ -168,7 +223,11 @@ bool GraphSerializer::loadFromFile(GraphDocument* document, const QString& fileP
     }
 
     const QJsonObject root = json.object();
-    document->schemaVersion = root.value(QStringLiteral("schemaVersion")).toInt(1);
+    if (root.contains(QStringLiteral("schemaVersion"))) {
+        document->schemaVersion = root.value(QStringLiteral("schemaVersion")).toInt(1);
+    } else {
+        document->schemaVersion = 1;
+    }
     document->nodes.clear();
     document->edges.clear();
 

@@ -48,6 +48,7 @@ class EdaSuite : public QObject {
 
 private slots:
     void serializerRoundtrip();
+    void serializerLegacyMigration();
     void serializerUnsupportedSchema();
     void sceneRoundtrip();
     void undoRedoSmoke();
@@ -94,6 +95,41 @@ void EdaSuite::serializerRoundtrip() {
     QCOMPARE(dst.edges.size(), src.edges.size());
     QCOMPARE(dst.nodes[0].id, src.nodes[0].id);
     QCOMPARE(dst.edges[0].fromPortId, src.edges[0].fromPortId);
+}
+
+void EdaSuite::serializerLegacyMigration() {
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString filePath = tmp.filePath(QStringLiteral("legacy.json"));
+
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    const QByteArray payload = R"({
+      "schemaVersion": 0,
+      "nodes": [
+        { "id": "N_A", "type": "tm_Node", "name": "A", "x": 10, "y": 20, "w": 120, "h": 72, "ports": [] },
+        { "id": "N_B", "type": "tm_Node", "name": "B", "x": 220, "y": 20, "w": 120, "h": 72, "ports": [] }
+      ],
+      "edges": [
+        { "id": "", "fromNodeId": "N_A", "fromPortId": "", "toNodeId": "N_B", "toPortId": "" }
+      ]
+    })";
+    file.write(payload);
+    file.close();
+
+    GraphDocument doc;
+    QString error;
+    QVERIFY(GraphSerializer::loadFromFile(&doc, filePath, &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+
+    QCOMPARE(doc.schemaVersion, 1);
+    QCOMPARE(doc.nodes.size(), 2);
+    QVERIFY(doc.nodes[0].ports.size() >= 2);
+    QVERIFY(doc.nodes[1].ports.size() >= 2);
+    QCOMPARE(doc.edges.size(), 1);
+    QVERIFY(!doc.edges[0].id.isEmpty());
+    QVERIFY(!doc.edges[0].fromPortId.isEmpty());
+    QVERIFY(!doc.edges[0].toPortId.isEmpty());
 }
 
 void EdaSuite::serializerUnsupportedSchema() {
