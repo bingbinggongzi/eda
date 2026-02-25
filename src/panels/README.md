@@ -2,6 +2,7 @@
 
 This folder hosts dock/panel widgets (project tree, palette, property inspector).
 
-Current status:
-- Panel logic is still centralized in `src/app/MainWindow.*`
-- Dedicated panel classes will be extracted here in a follow-up module
+Implemented:
+- `ProjectTreePanel`: project tree rendering + node selection signal
+- `PropertyPanel`: property table container and presentation setup
+- `PalettePanel`: categorized component palette with drag source items

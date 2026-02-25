@@ -11,17 +11,17 @@
 class EditorScene;
 class GraphView;
 class QDockWidget;
-class QToolBox;
 class QMenu;
 class QAction;
 class QTableWidget;
 class QTabWidget;
-class QTreeWidget;
-class QTreeWidgetItem;
 class QUndoStack;
 class QUndoGroup;
 class QCloseEvent;
 class NodeItem;
+class ProjectTreePanel;
+class PropertyPanel;
+class PalettePanel;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -56,7 +56,6 @@ private:
     bool closeDocumentTab(int index);
     void setDocumentDirty(int index, bool dirty);
     void updateTabTitle(int index);
-    void addPaletteCategory(QToolBox* toolBox, const QString& title, const QStringList& names);
     void updatePropertyTable(const QString& itemType,
                              const QString& itemId,
                              const QString& displayName,
@@ -65,7 +64,6 @@ private:
                              int outputCount);
     void rebuildProjectTreeNodes();
     void onPropertyCellChanged(int row, int column);
-    QTreeWidgetItem* findTreeItemByNodeId(const QString& nodeId) const;
     NodeItem* findNodeById(const QString& nodeId) const;
     void closeEvent(QCloseEvent* event) override;
 
@@ -73,14 +71,15 @@ private:
     QTabWidget* m_editorTabs = nullptr;
     GraphView* m_graphView = nullptr;
     EditorScene* m_scene = nullptr;
-    QTreeWidget* m_projectTree = nullptr;
     QTableWidget* m_propertyTable = nullptr;
 
     QDockWidget* m_projectDock = nullptr;
     QDockWidget* m_propertyDock = nullptr;
     QDockWidget* m_paletteDock = nullptr;
 
-    QTreeWidgetItem* m_graphNodesRoot = nullptr;
+    ProjectTreePanel* m_projectPanel = nullptr;
+    PropertyPanel* m_propertyPanel = nullptr;
+    PalettePanel* m_palettePanel = nullptr;
     QUndoGroup* m_undoGroup = nullptr;
     QAction* m_saveAction = nullptr;
     QAction* m_saveAsAction = nullptr;

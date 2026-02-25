@@ -56,6 +56,12 @@ add_executable(eda_ui_prototype
     src/app/GraphView.cpp
     src/scene/EditorScene.h
     src/scene/EditorScene.cpp
+    src/panels/ProjectTreePanel.h
+    src/panels/ProjectTreePanel.cpp
+    src/panels/PropertyPanel.h
+    src/panels/PropertyPanel.cpp
+    src/panels/PalettePanel.h
+    src/panels/PalettePanel.cpp
     src/items/NodeItem.h
     src/items/NodeItem.cpp
     src/items/PortItem.h

@@ -3,8 +3,10 @@
 #include "GraphView.h"
 #include "items/EdgeItem.h"
 #include "items/NodeItem.h"
-#include "model/ComponentCatalog.h"
 #include "model/GraphSerializer.h"
+#include "panels/PalettePanel.h"
+#include "panels/ProjectTreePanel.h"
+#include "panels/PropertyPanel.h"
 #include "scene/EditorScene.h"
 
 #include <QAction>
@@ -16,10 +18,8 @@
 #include <QFileInfo>
 #include <QGraphicsScene>
 #include <QGraphicsSimpleTextItem>
-#include <QHeaderView>
 #include <QKeySequence>
 #include <QLabel>
-#include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -30,8 +30,6 @@
 #include <QTableWidget>
 #include <QTabWidget>
 #include <QToolBar>
-#include <QToolBox>
-#include <QTreeWidget>
 #include <QUndoGroup>
 #include <QUndoStack>
 #include <QVBoxLayout>
@@ -204,30 +202,16 @@ void MainWindow::setupLeftDocks() {
     m_projectDock = new QDockWidget(QStringLiteral("Project"), this);
     m_projectDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     m_projectDock->setMinimumWidth(230);
-
-    m_projectTree = new QTreeWidget(m_projectDock);
-    m_projectTree->setHeaderHidden(true);
-    QTreeWidgetItem* projectRoot = new QTreeWidgetItem(QStringList() << QStringLiteral("RCP_SH0005"));
-    m_graphNodesRoot = new QTreeWidgetItem(QStringList() << QStringLiteral("Graph Nodes"));
-    projectRoot->addChild(m_graphNodesRoot);
-    m_projectTree->addTopLevelItem(projectRoot);
-    projectRoot->setExpanded(true);
-    m_graphNodesRoot->setExpanded(true);
-    m_projectDock->setWidget(m_projectTree);
+    m_projectPanel = new ProjectTreePanel(m_projectDock);
+    m_projectDock->setWidget(m_projectPanel);
     addDockWidget(Qt::LeftDockWidgetArea, m_projectDock);
 
     m_propertyDock = new QDockWidget(QStringLiteral("Properties"), this);
     m_propertyDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     m_propertyDock->setMinimumHeight(220);
-
-    m_propertyTable = new QTableWidget(9, 2, m_propertyDock);
-    m_propertyTable->setHorizontalHeaderLabels({QStringLiteral("Key"), QStringLiteral("Value")});
-    m_propertyTable->horizontalHeader()->setStretchLastSection(true);
-    m_propertyTable->verticalHeader()->setVisible(false);
-    m_propertyTable->setAlternatingRowColors(true);
-    m_propertyTable->setShowGrid(false);
-    m_propertyTable->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
-    m_propertyDock->setWidget(m_propertyTable);
+    m_propertyPanel = new PropertyPanel(m_propertyDock);
+    m_propertyTable = m_propertyPanel->table();
+    m_propertyDock->setWidget(m_propertyPanel);
     addDockWidget(Qt::LeftDockWidgetArea, m_propertyDock);
 
     splitDockWidget(m_projectDock, m_propertyDock, Qt::Vertical);
@@ -240,21 +224,8 @@ void MainWindow::setupRightDock() {
     m_paletteDock = new QDockWidget(QStringLiteral("Toolbox"), this);
     m_paletteDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     m_paletteDock->setMinimumWidth(280);
-
-    QWidget* panel = new QWidget(m_paletteDock);
-    QVBoxLayout* layout = new QVBoxLayout(panel);
-    layout->setContentsMargins(4, 4, 4, 4);
-    layout->setSpacing(4);
-
-    QToolBox* toolBox = new QToolBox(panel);
-    const ComponentCatalog& catalog = ComponentCatalog::instance();
-    const QStringList categories = catalog.categories();
-    for (const QString& category : categories) {
-        addPaletteCategory(toolBox, category, catalog.typesInCategory(category));
-    }
-
-    layout->addWidget(toolBox);
-    m_paletteDock->setWidget(panel);
+    m_palettePanel = new PalettePanel(m_paletteDock);
+    m_paletteDock->setWidget(m_palettePanel);
     addDockWidget(Qt::RightDockWidgetArea, m_paletteDock);
     m_viewMenu->addAction(m_paletteDock->toggleViewAction());
 }
@@ -263,13 +234,8 @@ void MainWindow::setupSignalBindings() {
     connect(m_editorTabs, &QTabWidget::currentChanged, this, &MainWindow::activateEditorTab);
     connect(m_editorTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeDocumentTab);
     connect(m_propertyTable, &QTableWidget::cellChanged, this, &MainWindow::onPropertyCellChanged);
-
-    connect(m_projectTree, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem* item) {
-        if (!item || !m_scene) {
-            return;
-        }
-        const QString nodeId = item->data(0, Qt::UserRole).toString();
-        if (nodeId.isEmpty()) {
+    connect(m_projectPanel, &ProjectTreePanel::nodeSelected, this, [this](const QString& nodeId) {
+        if (!m_scene || nodeId.isEmpty()) {
             return;
         }
 
@@ -432,7 +398,7 @@ void MainWindow::activateEditorTab(int index) {
     if (m_undoGroup) {
         m_undoGroup->setActiveStack(m_documents[index].undoStack);
     }
-    if (m_graphNodesRoot) {
+    if (m_projectPanel) {
         rebuildProjectTreeNodes();
     }
     if (m_propertyTable) {
@@ -571,25 +537,6 @@ void MainWindow::updateTabTitle(int index) {
     m_editorTabs->setTabText(index, tabText);
 }
 
-void MainWindow::addPaletteCategory(QToolBox* toolBox, const QString& title, const QStringList& names) {
-    auto* list = new QListWidget(toolBox);
-    list->setViewMode(QListView::IconMode);
-    list->setResizeMode(QListView::Adjust);
-    list->setIconSize(QSize(36, 36));
-    list->setSpacing(8);
-    list->setMovement(QListView::Static);
-    list->setDragEnabled(true);
-    list->setDragDropMode(QAbstractItemView::DragOnly);
-    list->setDefaultDropAction(Qt::CopyAction);
-
-    for (const QString& itemName : names) {
-        auto* item = new QListWidgetItem(style()->standardIcon(QStyle::SP_FileDialogContentsView), itemName);
-        item->setData(Qt::UserRole, itemName);
-        list->addItem(item);
-    }
-    toolBox->addItem(list, title);
-}
-
 void MainWindow::updatePropertyTable(const QString& itemType,
                                      const QString& itemId,
                                      const QString& displayName,
@@ -716,36 +663,18 @@ void MainWindow::updatePropertyTable(const QString& itemType,
     }
 
     if (itemType == QStringLiteral("node")) {
-        if (QTreeWidgetItem* item = findTreeItemByNodeId(itemId)) {
-            const QSignalBlocker treeBlocker(m_projectTree);
-            m_projectTree->setCurrentItem(item);
+        if (m_projectPanel) {
+            m_projectPanel->selectNode(itemId);
         }
     }
     m_propertyTableUpdating = false;
 }
 
 void MainWindow::rebuildProjectTreeNodes() {
-    if (!m_scene || !m_graphNodesRoot) {
+    if (!m_projectPanel) {
         return;
     }
-
-    m_graphNodesRoot->takeChildren();
-
-    QVector<NodeItem*> nodes;
-    for (QGraphicsItem* item : m_scene->items()) {
-        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
-            nodes.push_back(node);
-        }
-    }
-    std::sort(nodes.begin(), nodes.end(), [](const NodeItem* a, const NodeItem* b) { return a->nodeId() < b->nodeId(); });
-
-    for (NodeItem* node : nodes) {
-        QTreeWidgetItem* child =
-            new QTreeWidgetItem(QStringList() << QStringLiteral("%1 (%2)").arg(node->displayName(), node->nodeId()));
-        child->setData(0, Qt::UserRole, node->nodeId());
-        m_graphNodesRoot->addChild(child);
-    }
-    m_graphNodesRoot->setExpanded(true);
+    m_projectPanel->rebuildFromScene(m_scene);
 }
 
 void MainWindow::onPropertyCellChanged(int row, int column) {
@@ -797,19 +726,6 @@ NodeItem* MainWindow::findNodeById(const QString& nodeId) const {
             if (node->nodeId() == nodeId) {
                 return node;
             }
-        }
-    }
-    return nullptr;
-}
-
-QTreeWidgetItem* MainWindow::findTreeItemByNodeId(const QString& nodeId) const {
-    if (!m_graphNodesRoot || nodeId.isEmpty()) {
-        return nullptr;
-    }
-    for (int i = 0; i < m_graphNodesRoot->childCount(); ++i) {
-        QTreeWidgetItem* child = m_graphNodesRoot->child(i);
-        if (child && child->data(0, Qt::UserRole).toString() == nodeId) {
-            return child;
         }
     }
     return nullptr;
