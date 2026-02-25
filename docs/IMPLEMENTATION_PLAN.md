@@ -35,13 +35,13 @@ Post-MVP:
 | M0 | Requirement freeze and interaction baseline | 0.5 day | None | Done |
 | M1 | UI shell and project scaffold | 1 day | M0 | Done |
 | M2 | Model and serialization | 1.5 days | M0 | Done |
-| M3 | Canvas interaction hardening | 2 days | M1 | In progress |
+| M3 | Canvas interaction hardening | 2 days | M1 | Done |
 | M4 | Core graph items (Node/Port/Edge) | 2 days | M2, M3 | Done |
-| M5 | Command system (Undo/Redo) | 2 days | M2, M4 | In progress |
-| M6 | Side panel integration | 2 days | M2, M4 | In progress |
-| M7 | Routing and visual polish | 2 days | M4, M6 | In progress |
-| M8 | Performance and stability | 1.5 days | M5, M7 | Planned |
-| M9 | Testing and delivery | 1 day | M8 | In progress |
+| M5 | Command system (Undo/Redo) | 2 days | M2, M4 | Done |
+| M6 | Side panel integration | 2 days | M2, M4 | Done |
+| M7 | Routing and visual polish | 2 days | M4, M6 | Done |
+| M8 | Performance and stability | 1.5 days | M5, M7 | Done |
+| M9 | Testing and delivery | 1 day | M8 | Done |
 
 ## 5. Detailed Breakdown and Acceptance
 
@@ -78,7 +78,7 @@ Tasks:
 - [x] Implement `Document/Node/Port/Edge` data structures
 - [x] Add stable ID generation and references
 - [x] Implement JSON import/export with `schemaVersion`
-- [ ] Add migration entry point for future versions
+- [x] Add migration entry point for future versions
 
 Deliverables:
 - `src/model/*` and `src/model/io/*`
@@ -92,7 +92,7 @@ Tasks:
 - [x] Grid, Ctrl+wheel zoom, middle-button pan, rubber-band select
 - [x] Zoom limits and zoom status indicator
 - [x] Grid snapping with toggle
-- [ ] Explicit interaction mode state machine (select/connect/place/pan)
+- [x] Explicit interaction mode state machine (select/connect/place/pan)
 
 Deliverables:
 - Hardened `EditorView` and `EditorScene` interaction base
@@ -120,7 +120,7 @@ Tasks:
 - [x] Integrate `QUndoStack`
 - [x] Add commands for add/delete/move node
 - [x] Add commands for connect/disconnect edge
-- [ ] Add merge strategy for grouped actions
+- [x] Add merge strategy for grouped actions
 
 Deliverables:
 - `src/commands/*`
@@ -134,7 +134,7 @@ Tasks:
 - [x] Drag from palette to create real nodes
 - [x] Property panel two-way binding
 - [x] Project tree and scene selection sync
-- [ ] Preserve context on tab/document switch
+- [x] Preserve context on tab/document switch
 
 Deliverables:
 - `src/panels/*` + scene synchronization glue
@@ -148,7 +148,7 @@ Tasks:
 - [x] Manhattan edge routing
 - [x] Hover/selection highlight
 - [x] Live ghost edge while connecting
-- [ ] Alignment guides and port snap feedback
+- [x] Alignment guides and port snap feedback
 
 Deliverables:
 - Routing and visual feedback modules
@@ -159,10 +159,10 @@ Acceptance:
 ### M8 Performance and Stability
 
 Tasks:
-- [ ] Dirty-region update strategy
-- [ ] Partial recompute for edge updates
-- [ ] Large-scene stress test (target: 1000 node scale)
-- [ ] Crash path hardening and error handling
+- [x] Dirty-region update strategy
+- [x] Partial recompute for edge updates
+- [x] Large-scene stress test (target: 1000 node scale)
+- [x] Crash path hardening and error handling
 
 Deliverables:
 - Profiling notes and optimization changes
@@ -195,14 +195,16 @@ Acceptance:
 - JSON save/load pipeline implemented and bound to menu actions
 - Undo/redo stack integrated for add/move/connect/delete
 - Test target `eda_tests` and smoke checklist added
+- Multi-tab editor context switching implemented with per-tab scene/view state
+- Performance notes and stress harness added (`docs/PERFORMANCE.md`, `scripts/stress.ps1`)
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Add explicit interaction mode state machine in `EditorScene` (M3)
-2. Add grouped command merge strategy for drag bursts and batch edits (M5)
-3. Add tab-level context persistence for multi-document editing (M6)
-4. Add alignment guides and stronger snap feedback (M7)
-5. Add performance stress test harness and optimization pass (M8)
+1. Split source tree into `app/model/scene/items/commands/panels` folders for long-term maintainability
+2. Add schema migration tests for future document versions
+3. Add CI workflow for build + test on push/PR
+4. Add richer component metadata and typed property editing widgets
+5. Add optional obstacle-aware routing as post-MVP enhancement
 
 ## 8. Merge Quality Gates
 

@@ -179,7 +179,8 @@ bool EditorScene::moveNodeWithUndo(const QString& nodeId, const QPointF& newPos)
     }
     const GraphDocument after = toDocument();
     if (!areDocumentsEquivalent(before, after)) {
-        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Move Node"), true));
+        m_undoStack->push(new DocumentStateCommand(
+            this, before, after, QStringLiteral("Move Node"), true, QStringLiteral("move:%1").arg(nodeId)));
     }
     return true;
 }
@@ -363,6 +364,34 @@ void EditorScene::setUndoStack(QUndoStack* stack) {
     m_undoStack = stack;
 }
 
+void EditorScene::setInteractionMode(InteractionMode mode) {
+    m_mode = mode;
+    if (m_mode != InteractionMode::Connect && m_previewEdge) {
+        removeItem(m_previewEdge);
+        delete m_previewEdge;
+        m_previewEdge = nullptr;
+        m_pendingPort = nullptr;
+        emit connectionStateChanged(false);
+    }
+}
+
+InteractionMode EditorScene::interactionMode() const {
+    return m_mode;
+}
+
+void EditorScene::setPlacementType(const QString& typeName) {
+    m_placementType = typeName;
+}
+
+void EditorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && m_mode == InteractionMode::Place && !m_placementType.isEmpty()) {
+        createNodeWithUndo(m_placementType, event->scenePos());
+        event->accept();
+        return;
+    }
+    QGraphicsScene::mousePressEvent(event);
+}
+
 void EditorScene::mouseMoveEvent(QGraphicsSceneMouseEvent* event) {
     if (m_previewEdge) {
         m_previewEdge->setPreviewEnd(event->scenePos());
@@ -381,6 +410,9 @@ void EditorScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
 
 void EditorScene::onPortConnectionStart(PortItem* port) {
     if (!port) {
+        return;
+    }
+    if (m_mode != InteractionMode::Select && m_mode != InteractionMode::Connect) {
         return;
     }
 
@@ -448,7 +480,8 @@ void EditorScene::onNodeDragFinished(NodeItem* node, const QPointF& oldPos, cons
     }
 
     if (!areDocumentsEquivalent(before, after)) {
-        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Move Node"), true));
+        m_undoStack->push(new DocumentStateCommand(
+            this, before, after, QStringLiteral("Move Node"), true, QStringLiteral("move:%1").arg(node->nodeId())));
     }
 }
 

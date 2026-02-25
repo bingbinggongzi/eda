@@ -42,6 +42,12 @@ cmake --build build --config Debug --target eda_tests
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
+Stress run:
+
+```powershell
+.\scripts\stress.ps1
+```
+
 If CMake cannot find Qt, set:
 
 ```powershell

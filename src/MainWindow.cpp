@@ -166,29 +166,11 @@ void MainWindow::setupCentralArea() {
     m_editorTabs = new QTabWidget(this);
     m_editorTabs->setDocumentMode(true);
     m_editorTabs->setTabsClosable(true);
-
-    m_scene = new EditorScene(this);
-    m_scene->setSceneRect(0, 0, 3600, 2400);
-    m_scene->setUndoStack(m_undoStack);
-
-    m_graphView = new GraphView(this);
-    m_graphView->setScene(m_scene);
-
-    QWidget* editorPage = new QWidget(this);
-    QVBoxLayout* layout = new QVBoxLayout(editorPage);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
-
-    QLabel* rulerHint = new QLabel(QStringLiteral("Coordinate ruler placeholder"), editorPage);
-    rulerHint->setFixedHeight(20);
-    rulerHint->setStyleSheet(
-        "QLabel { color: #666; background: #f1f1f1; border-bottom: 1px solid #dadada; padding-left: 8px; }");
-    layout->addWidget(rulerHint);
-    layout->addWidget(m_graphView);
-
-    m_editorTabs->addTab(editorPage, QStringLiteral("RCP_SH1805"));
-    m_editorTabs->addTab(new QLabel(QStringLiteral("Reserved tab"), this), QStringLiteral("RCP_SH1208"));
+    m_editorTabs->setMovable(true);
+    m_editorTabs->addTab(createEditorTab(QStringLiteral("RCP_SH1805")), QStringLiteral("RCP_SH1805"));
+    m_editorTabs->addTab(createEditorTab(QStringLiteral("RCP_SH1208")), QStringLiteral("RCP_SH1208"));
     setCentralWidget(m_editorTabs);
+    activateEditorTab(0);
 }
 
 void MainWindow::setupLeftDocks() {
@@ -270,24 +252,47 @@ void MainWindow::setupRightDock() {
 }
 
 void MainWindow::setupSignalBindings() {
-    connect(m_graphView, &GraphView::paletteItemDropped, this, [this](const QString& typeName, const QPointF& scenePos) {
-        if (!m_scene) {
-            return;
-        }
-        NodeItem* node = m_scene->createNodeWithUndo(typeName, scenePos);
-        if (node) {
-            m_scene->clearSelection();
-            node->setSelected(true);
-            statusBar()->showMessage(QStringLiteral("Node created: %1").arg(typeName), 2000);
-        }
-    });
+    for (int i = 0; i < m_views.size(); ++i) {
+        GraphView* view = m_views[i];
+        EditorScene* scene = m_scenes[i];
 
-    connect(m_graphView, &GraphView::zoomChanged, this, [this](int percent) {
-        statusBar()->showMessage(QStringLiteral("Zoom: %1%").arg(percent), 1500);
-    });
+        connect(view, &GraphView::paletteItemDropped, this, [this, scene](const QString& typeName, const QPointF& scenePos) {
+            NodeItem* node = scene->createNodeWithUndo(typeName, scenePos);
+            if (scene == m_scene && node) {
+                scene->clearSelection();
+                node->setSelected(true);
+                statusBar()->showMessage(QStringLiteral("Node created: %1").arg(typeName), 2000);
+            }
+        });
 
-    connect(m_scene, &EditorScene::selectionInfoChanged, this, &MainWindow::updatePropertyTable);
-    connect(m_scene, &EditorScene::graphChanged, this, &MainWindow::rebuildProjectTreeNodes);
+        connect(view, &GraphView::zoomChanged, this, [this, view](int percent) {
+            if (view == m_graphView) {
+                statusBar()->showMessage(QStringLiteral("Zoom: %1%").arg(percent), 1500);
+            }
+        });
+
+        connect(scene,
+                &EditorScene::selectionInfoChanged,
+                this,
+                [this, scene](const QString& itemType,
+                              const QString& itemId,
+                              const QString& displayName,
+                              const QPointF& pos,
+                              int inputCount,
+                              int outputCount) {
+                    if (scene == m_scene) {
+                        updatePropertyTable(itemType, itemId, displayName, pos, inputCount, outputCount);
+                    }
+                });
+
+        connect(scene, &EditorScene::graphChanged, this, [this, scene]() {
+            if (scene == m_scene) {
+                rebuildProjectTreeNodes();
+            }
+        });
+    }
+
+    connect(m_editorTabs, &QTabWidget::currentChanged, this, &MainWindow::activateEditorTab);
     connect(m_propertyTable, &QTableWidget::cellChanged, this, &MainWindow::onPropertyCellChanged);
 
     connect(m_projectTree, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem* item) {
@@ -340,6 +345,46 @@ void MainWindow::populateDemoGraph() {
     if (n3 && n4) {
         m_scene->createEdge(n3->firstOutputPort(), n4->firstInputPort());
     }
+}
+
+QWidget* MainWindow::createEditorTab(const QString&) {
+    EditorScene* scene = new EditorScene(this);
+    scene->setSceneRect(0, 0, 3600, 2400);
+    scene->setUndoStack(m_undoStack);
+
+    GraphView* view = new GraphView(this);
+    view->setScene(scene);
+
+    QWidget* page = new QWidget(this);
+    QVBoxLayout* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    QLabel* rulerHint = new QLabel(QStringLiteral("Coordinate ruler placeholder"), page);
+    rulerHint->setFixedHeight(20);
+    rulerHint->setStyleSheet(
+        "QLabel { color: #666; background: #f1f1f1; border-bottom: 1px solid #dadada; padding-left: 8px; }");
+    layout->addWidget(rulerHint);
+    layout->addWidget(view);
+
+    m_scenes.push_back(scene);
+    m_views.push_back(view);
+    return page;
+}
+
+void MainWindow::activateEditorTab(int index) {
+    if (index < 0 || index >= m_scenes.size()) {
+        return;
+    }
+    m_scene = m_scenes[index];
+    m_graphView = m_views[index];
+    if (m_graphNodesRoot) {
+        rebuildProjectTreeNodes();
+    }
+    if (m_propertyTable) {
+        updatePropertyTable(QString(), QString(), QString(), QPointF(), 0, 0);
+    }
+    statusBar()->showMessage(QStringLiteral("Active tab: %1").arg(m_editorTabs->tabText(index)), 1200);
 }
 
 void MainWindow::addPaletteCategory(QToolBox* toolBox, const QString& title, const QStringList& names) {

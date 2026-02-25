@@ -85,6 +85,26 @@ bool fromJson(const QJsonObject& o, EdgeData* out) {
     out->toPortId = o.value(QStringLiteral("toPortId")).toString();
     return !out->id.isEmpty() && !out->fromPortId.isEmpty() && !out->toPortId.isEmpty();
 }
+
+bool migrateToCurrent(GraphDocument* document, QString* errorMessage) {
+    if (!document) {
+        return false;
+    }
+    if (document->schemaVersion <= 0) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Invalid schemaVersion: %1").arg(document->schemaVersion);
+        }
+        return false;
+    }
+    if (document->schemaVersion == 1) {
+        return true;
+    }
+
+    if (errorMessage) {
+        *errorMessage = QStringLiteral("Unsupported schemaVersion: %1").arg(document->schemaVersion);
+    }
+    return false;
+}
 }  // namespace
 
 bool GraphSerializer::saveToFile(const GraphDocument& document, const QString& filePath, QString* errorMessage) {
@@ -168,5 +188,5 @@ bool GraphSerializer::loadFromFile(GraphDocument* document, const QString& fileP
         }
     }
 
-    return true;
+    return migrateToCurrent(document, errorMessage);
 }

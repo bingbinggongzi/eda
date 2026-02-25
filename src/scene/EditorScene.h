@@ -11,6 +11,12 @@ class EdgeItem;
 class NodeItem;
 class PortItem;
 
+enum class InteractionMode {
+    Select,
+    Connect,
+    Place
+};
+
 class EditorScene : public QGraphicsScene {
     Q_OBJECT
 
@@ -37,6 +43,9 @@ public:
     bool snapToGrid() const;
     int gridSize() const;
     void setUndoStack(QUndoStack* stack);
+    void setInteractionMode(InteractionMode mode);
+    InteractionMode interactionMode() const;
+    void setPlacementType(const QString& typeName);
 
 signals:
     void selectionInfoChanged(const QString& itemType,
@@ -49,6 +58,7 @@ signals:
     void connectionStateChanged(bool active);
 
 protected:
+    void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
 
@@ -82,4 +92,6 @@ private:
     PortItem* m_pendingPort = nullptr;
     EdgeItem* m_previewEdge = nullptr;
     QUndoStack* m_undoStack = nullptr;
+    InteractionMode m_mode = InteractionMode::Select;
+    QString m_placementType;
 };

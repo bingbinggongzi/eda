@@ -3,6 +3,7 @@
 #include <QMainWindow>
 #include <QPointF>
 #include <QString>
+#include <QVector>
 
 class EditorScene;
 class GraphView;
@@ -29,6 +30,8 @@ private:
     void setupRightDock();
     void setupSignalBindings();
     void populateDemoGraph();
+    QWidget* createEditorTab(const QString& title);
+    void activateEditorTab(int index);
     void addPaletteCategory(QToolBox* toolBox, const QString& title, const QStringList& names);
     void updatePropertyTable(const QString& itemType,
                              const QString& itemId,
@@ -56,4 +59,6 @@ private:
     QUndoStack* m_undoStack = nullptr;
     QString m_selectedItemType;
     QString m_selectedItemId;
+    QVector<EditorScene*> m_scenes;
+    QVector<GraphView*> m_views;
 };

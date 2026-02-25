@@ -3,6 +3,7 @@
 #include "../src/model/GraphSerializer.h"
 #include "../src/scene/EditorScene.h"
 
+#include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <QUndoStack>
@@ -47,8 +48,10 @@ class EdaSuite : public QObject {
 
 private slots:
     void serializerRoundtrip();
+    void serializerUnsupportedSchema();
     void sceneRoundtrip();
     void undoRedoSmoke();
+    void stressLargeGraphBuild();
 };
 
 void EdaSuite::serializerRoundtrip() {
@@ -91,6 +94,27 @@ void EdaSuite::serializerRoundtrip() {
     QCOMPARE(dst.edges.size(), src.edges.size());
     QCOMPARE(dst.nodes[0].id, src.nodes[0].id);
     QCOMPARE(dst.edges[0].fromPortId, src.edges[0].fromPortId);
+}
+
+void EdaSuite::serializerUnsupportedSchema() {
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString filePath = tmp.filePath(QStringLiteral("future.json"));
+
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    const QByteArray payload = R"({
+      "schemaVersion": 99,
+      "nodes": [],
+      "edges": []
+    })";
+    file.write(payload);
+    file.close();
+
+    GraphDocument doc;
+    QString error;
+    QVERIFY(!GraphSerializer::loadFromFile(&doc, filePath, &error));
+    QVERIFY(!error.isEmpty());
 }
 
 void EdaSuite::sceneRoundtrip() {
@@ -140,6 +164,27 @@ void EdaSuite::undoRedoSmoke() {
 
     undoStack.undo();
     QCOMPARE(countEdges(scene), 0);
+}
+
+void EdaSuite::stressLargeGraphBuild() {
+    EditorScene scene;
+    QVector<NodeItem*> created;
+    created.reserve(1000);
+
+    for (int i = 0; i < 1000; ++i) {
+        const int col = i % 40;
+        const int row = i / 40;
+        NodeItem* node = scene.createNode(QStringLiteral("tm_Node"), QPointF(80.0 + col * 160.0, 80.0 + row * 110.0));
+        QVERIFY(node != nullptr);
+        created.push_back(node);
+    }
+
+    for (int i = 1; i < created.size(); ++i) {
+        QVERIFY(scene.createEdge(created[i - 1]->firstOutputPort(), created[i]->firstInputPort()) != nullptr);
+    }
+
+    QCOMPARE(countNodes(scene), 1000);
+    QCOMPARE(countEdges(scene), 999);
 }
 
 QTEST_MAIN(EdaSuite)

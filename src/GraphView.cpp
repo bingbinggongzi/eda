@@ -1,4 +1,5 @@
 #include "GraphView.h"
+#include "items/NodeItem.h"
 
 #include <cmath>
 
@@ -53,6 +54,29 @@ void GraphView::drawBackground(QPainter* painter, const QRectF& rect) {
     for (int y = top - (top % kMajorGrid); y < bottom; y += kMajorGrid) {
         painter->drawLine(left, y, right, y);
     }
+}
+
+void GraphView::drawForeground(QPainter* painter, const QRectF& rect) {
+    QGraphicsView::drawForeground(painter, rect);
+
+    if (!scene()) {
+        return;
+    }
+    const QList<QGraphicsItem*> selected = scene()->selectedItems();
+    if (selected.size() != 1) {
+        return;
+    }
+
+    NodeItem* node = dynamic_cast<NodeItem*>(selected.first());
+    if (!node) {
+        return;
+    }
+
+    const QPointF center = node->sceneBoundingRect().center();
+    QPen guidePen(QColor(255, 153, 51, 150), 1.0, Qt::DashLine);
+    painter->setPen(guidePen);
+    painter->drawLine(QPointF(rect.left(), center.y()), QPointF(rect.right(), center.y()));
+    painter->drawLine(QPointF(center.x(), rect.top()), QPointF(center.x(), rect.bottom()));
 }
 
 void GraphView::wheelEvent(QWheelEvent* event) {
