@@ -49,11 +49,11 @@ endif()
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
 add_executable(eda_ui_prototype
-    src/main.cpp
-    src/MainWindow.h
-    src/MainWindow.cpp
-    src/GraphView.h
-    src/GraphView.cpp
+    src/app/main.cpp
+    src/app/MainWindow.h
+    src/app/MainWindow.cpp
+    src/app/GraphView.h
+    src/app/GraphView.cpp
     src/scene/EditorScene.h
     src/scene/EditorScene.cpp
     src/items/NodeItem.h
@@ -71,6 +71,7 @@ add_executable(eda_ui_prototype
     src/commands/DocumentStateCommand.cpp
 )
 
+target_include_directories(eda_ui_prototype PRIVATE src)
 target_link_libraries(eda_ui_prototype PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 
 include(CTest)
@@ -97,6 +98,7 @@ if(BUILD_TESTING)
         src/commands/DocumentStateCommand.cpp
     )
 
+    target_include_directories(eda_tests PRIVATE src)
     target_link_libraries(eda_tests PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Test)
     add_test(NAME eda_tests COMMAND eda_tests)
 

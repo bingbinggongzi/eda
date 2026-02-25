@@ -1,7 +1,7 @@
-#include "../src/items/EdgeItem.h"
-#include "../src/items/NodeItem.h"
-#include "../src/model/GraphSerializer.h"
-#include "../src/scene/EditorScene.h"
+#include "items/EdgeItem.h"
+#include "items/NodeItem.h"
+#include "model/GraphSerializer.h"
+#include "scene/EditorScene.h"
 
 #include <QFile>
 #include <QTemporaryDir>

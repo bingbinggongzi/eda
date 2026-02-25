@@ -1,6 +1,6 @@
 #include "DocumentStateCommand.h"
 
-#include "../scene/EditorScene.h"
+#include "scene/EditorScene.h"
 
 DocumentStateCommand::DocumentStateCommand(EditorScene* scene,
                                            const GraphDocument& before,

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../model/GraphDocument.h"
+#include "model/GraphDocument.h"
 
 #include <QUndoCommand>
 

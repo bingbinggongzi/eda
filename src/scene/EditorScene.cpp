@@ -1,10 +1,10 @@
 #include "EditorScene.h"
 
-#include "../items/EdgeItem.h"
-#include "../items/NodeItem.h"
-#include "../items/PortItem.h"
-#include "../commands/DocumentStateCommand.h"
-#include "../model/ComponentCatalog.h"
+#include "commands/DocumentStateCommand.h"
+#include "items/EdgeItem.h"
+#include "items/NodeItem.h"
+#include "items/PortItem.h"
+#include "model/ComponentCatalog.h"
 
 #include <algorithm>
 #include <cmath>

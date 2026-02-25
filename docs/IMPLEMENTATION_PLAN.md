@@ -200,14 +200,14 @@ Acceptance:
 - CI workflow added (`.github/workflows/ci.yml`)
 - Legacy schema migration tests and component metadata registry integrated
 - Typed property editors added for bool/int/double/string properties
+- Source tree aligned to `src/app|model|scene|items|commands|panels`
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Split source tree into `app/model/scene/items/commands/panels` folders for long-term maintainability
-2. Add optional obstacle-aware routing as post-MVP enhancement
-3. Add richer command granularity (separate move/rename/property command classes)
-4. Add multi-document file lifecycle (`New/Close/Save As` and dirty-state prompts)
-5. Add panel decomposition under `src/panels` for clearer ownership
+1. Extend optional obstacle-aware routing as post-MVP enhancement
+2. Add richer command granularity (separate move/rename/property command classes)
+3. Add multi-document file lifecycle (`New/Close/Save As` and dirty-state prompts)
+4. Add panel decomposition under `src/panels` for clearer ownership
 
 ## 8. Merge Quality Gates
 
