@@ -94,6 +94,8 @@ if(BUILD_TESTING)
         src/model/ComponentCatalog.cpp
         src/model/GraphSerializer.h
         src/model/GraphSerializer.cpp
+        src/app/GraphView.h
+        src/app/GraphView.cpp
         src/scene/EditorScene.h
         src/scene/EditorScene.cpp
         src/items/NodeItem.h

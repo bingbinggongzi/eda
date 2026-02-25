@@ -1,9 +1,13 @@
+#include "app/GraphView.h"
 #include "items/EdgeItem.h"
 #include "items/NodeItem.h"
 #include "model/GraphSerializer.h"
 #include "scene/EditorScene.h"
 
+#include <QDataStream>
 #include <QFile>
+#include <QMimeData>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <QUndoStack>
@@ -54,6 +58,7 @@ private slots:
     void undoRedoSmoke();
     void granularCommandMerge();
     void obstacleRoutingToggle();
+    void toolboxMimeDropAccepted();
     void stressLargeGraphBuild();
 };
 
@@ -272,6 +277,47 @@ void EdaSuite::obstacleRoutingToggle() {
     QCOMPARE(edge->routingMode(), EdgeRoutingMode::ObstacleAvoiding);
     const QRectF avoidBounds = edge->path().boundingRect();
     QVERIFY(avoidBounds.height() > manhattanBounds.height() + 10.0);
+}
+
+void EdaSuite::toolboxMimeDropAccepted() {
+    class TestGraphView final : public GraphView {
+    public:
+        using GraphView::dragEnterEvent;
+        using GraphView::dropEvent;
+    };
+
+    EditorScene scene;
+    scene.setSceneRect(0, 0, 1200, 800);
+
+    TestGraphView view;
+    view.resize(640, 480);
+    view.setScene(&scene);
+
+    QMimeData mime;
+    QByteArray encoded;
+    {
+        QDataStream stream(&encoded, QIODevice::WriteOnly);
+        QMap<int, QVariant> roleData;
+        roleData.insert(Qt::UserRole, QStringLiteral("Voter"));
+        roleData.insert(Qt::DisplayRole, QStringLiteral("Voter"));
+        stream << 0 << 0 << roleData;
+    }
+    mime.setData(QStringLiteral("application/x-qabstractitemmodeldatalist"), encoded);
+
+    QSignalSpy droppedSpy(&view, &GraphView::paletteItemDropped);
+
+    QDragEnterEvent enterEvent(QPoint(120, 80), Qt::CopyAction, &mime, Qt::NoButton, Qt::NoModifier);
+    view.dragEnterEvent(&enterEvent);
+    QVERIFY(enterEvent.isAccepted());
+
+    QDropEvent dropEvent(QPointF(120.0, 80.0), Qt::CopyAction, &mime, Qt::NoButton, Qt::NoModifier);
+    view.dropEvent(&dropEvent);
+    QVERIFY(dropEvent.isAccepted());
+
+    QCOMPARE(droppedSpy.count(), 1);
+    const QList<QVariant> args = droppedSpy.takeFirst();
+    QCOMPARE(args[0].toString(), QStringLiteral("Voter"));
+    QVERIFY(args[1].canConvert<QPointF>());
 }
 
 void EdaSuite::stressLargeGraphBuild() {
