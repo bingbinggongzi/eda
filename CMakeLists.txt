@@ -54,6 +54,14 @@ add_executable(eda_ui_prototype
     src/MainWindow.cpp
     src/GraphView.h
     src/GraphView.cpp
+    src/scene/EditorScene.h
+    src/scene/EditorScene.cpp
+    src/items/NodeItem.h
+    src/items/NodeItem.cpp
+    src/items/PortItem.h
+    src/items/PortItem.cpp
+    src/items/EdgeItem.h
+    src/items/EdgeItem.cpp
 )
 
 target_link_libraries(eda_ui_prototype PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)

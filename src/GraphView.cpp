@@ -2,6 +2,9 @@
 
 #include <cmath>
 
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QScrollBar>
@@ -17,6 +20,7 @@ GraphView::GraphView(QWidget* parent)
     setTransformationAnchor(QGraphicsView::NoAnchor);
     setResizeAnchor(QGraphicsView::AnchorViewCenter);
     setBackgroundBrush(QColor(250, 250, 250));
+    setAcceptDrops(true);
 }
 
 void GraphView::drawBackground(QPainter* painter, const QRectF& rect) {
@@ -101,9 +105,49 @@ void GraphView::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void GraphView::applyZoom(qreal factor, const QPoint& anchorPos) {
+    const qreal nextZoom = m_zoom * factor;
+    if (nextZoom < m_minZoom || nextZoom > m_maxZoom) {
+        return;
+    }
+
     const QPointF before = mapToScene(anchorPos);
     scale(factor, factor);
+    m_zoom = nextZoom;
     const QPointF after = mapToScene(anchorPos);
     const QPointF delta = after - before;
     translate(delta.x(), delta.y());
+    emit zoomChanged(static_cast<int>(m_zoom * 100.0));
+}
+
+void GraphView::dragEnterEvent(QDragEnterEvent* event) {
+    if (event->mimeData()->hasText()) {
+        event->acceptProposedAction();
+        return;
+    }
+    QGraphicsView::dragEnterEvent(event);
+}
+
+void GraphView::dragMoveEvent(QDragMoveEvent* event) {
+    if (event->mimeData()->hasText()) {
+        event->acceptProposedAction();
+        return;
+    }
+    QGraphicsView::dragMoveEvent(event);
+}
+
+void GraphView::dropEvent(QDropEvent* event) {
+    if (event->mimeData()->hasText()) {
+        const QString typeName = event->mimeData()->text().trimmed();
+        if (!typeName.isEmpty()) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            const QPoint viewPos = event->position().toPoint();
+#else
+            const QPoint viewPos = event->pos();
+#endif
+            emit paletteItemDropped(typeName, mapToScene(viewPos));
+            event->acceptProposedAction();
+            return;
+        }
+    }
+    QGraphicsView::dropEvent(event);
 }
