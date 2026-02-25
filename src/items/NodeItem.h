@@ -7,6 +7,8 @@
 #include <QString>
 #include <QVector>
 
+class QGraphicsSceneMouseEvent;
+
 class NodeItem : public QGraphicsObject {
     Q_OBJECT
 
@@ -35,9 +37,12 @@ public:
 
 signals:
     void nodeMoved(NodeItem* node);
+    void nodeDragFinished(NodeItem* node, const QPointF& oldPos, const QPointF& newPos);
 
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
+    void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
 
 private:
     void layoutPorts();
@@ -48,4 +53,5 @@ private:
     QSizeF m_size;
     QVector<PortItem*> m_inputPorts;
     QVector<PortItem*> m_outputPorts;
+    QPointF m_dragStartPos;
 };

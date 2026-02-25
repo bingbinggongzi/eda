@@ -13,6 +13,7 @@ class QTableWidget;
 class QTabWidget;
 class QTreeWidget;
 class QTreeWidgetItem;
+class QUndoStack;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -50,4 +51,5 @@ private:
 
     QTreeWidgetItem* m_graphNodesRoot = nullptr;
     QString m_currentFilePath;
+    QUndoStack* m_undoStack = nullptr;
 };

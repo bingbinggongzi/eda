@@ -1,5 +1,6 @@
 #include "NodeItem.h"
 
+#include <QGraphicsSceneMouseEvent>
 #include <QPainter>
 
 NodeItem::NodeItem(const QString& nodeId,
@@ -112,6 +113,23 @@ QVariant NodeItem::itemChange(GraphicsItemChange change, const QVariant& value) 
         emit nodeMoved(this);
     }
     return QGraphicsObject::itemChange(change, value);
+}
+
+void NodeItem::mousePressEvent(QGraphicsSceneMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) {
+        m_dragStartPos = pos();
+    }
+    QGraphicsObject::mousePressEvent(event);
+}
+
+void NodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) {
+        const QPointF endPos = pos();
+        if (m_dragStartPos != endPos) {
+            emit nodeDragFinished(this, m_dragStartPos, endPos);
+        }
+    }
+    QGraphicsObject::mouseReleaseEvent(event);
 }
 
 void NodeItem::layoutPorts() {

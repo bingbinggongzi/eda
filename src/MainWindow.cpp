@@ -11,6 +11,7 @@
 #include <QGraphicsScene>
 #include <QGraphicsSimpleTextItem>
 #include <QHeaderView>
+#include <QKeySequence>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
@@ -23,6 +24,7 @@
 #include <QToolBar>
 #include <QToolBox>
 #include <QTreeWidget>
+#include <QUndoStack>
 #include <QVBoxLayout>
 #include <QMessageBox>
 
@@ -48,6 +50,8 @@ void MainWindow::setupWindow() {
 }
 
 void MainWindow::setupMenusAndToolbar() {
+    m_undoStack = new QUndoStack(this);
+
     QMenu* projectMenu = menuBar()->addMenu(QStringLiteral("Project"));
     QMenu* editMenu = menuBar()->addMenu(QStringLiteral("Edit"));
     m_viewMenu = menuBar()->addMenu(QStringLiteral("View"));
@@ -62,10 +66,15 @@ void MainWindow::setupMenusAndToolbar() {
     projectMenu->addSeparator();
     projectMenu->addAction(QStringLiteral("Exit"), this, &QWidget::close);
 
-    editMenu->addAction(style()->standardIcon(QStyle::SP_ArrowBack), QStringLiteral("Undo"));
-    editMenu->addAction(style()->standardIcon(QStyle::SP_ArrowForward), QStringLiteral("Redo"));
+    QAction* undoAction = m_undoStack->createUndoAction(this, QStringLiteral("Undo"));
+    undoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowBack));
+    QAction* redoAction = m_undoStack->createRedoAction(this, QStringLiteral("Redo"));
+    redoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
+    editMenu->addAction(undoAction);
+    editMenu->addAction(redoAction);
     editMenu->addSeparator();
-    editMenu->addAction(QStringLiteral("Delete"));
+    QAction* deleteAction = editMenu->addAction(QStringLiteral("Delete"));
+    deleteAction->setShortcut(QKeySequence::Delete);
 
     runMenu->addAction(style()->standardIcon(QStyle::SP_MediaPlay), QStringLiteral("Run"));
     runMenu->addAction(style()->standardIcon(QStyle::SP_MediaStop), QStringLiteral("Stop"));
@@ -76,6 +85,9 @@ void MainWindow::setupMenusAndToolbar() {
     toolBar->addAction(openAction);
     toolBar->addAction(saveAction);
     toolBar->addSeparator();
+    toolBar->addAction(undoAction);
+    toolBar->addAction(redoAction);
+    toolBar->addSeparator();
     toolBar->addAction(clearAction);
     toolBar->addSeparator();
     toolBar->addAction(style()->standardIcon(QStyle::SP_MediaPlay), QStringLiteral("Run"));
@@ -85,8 +97,17 @@ void MainWindow::setupMenusAndToolbar() {
             return;
         }
         m_scene->clearGraph();
+        if (m_undoStack) {
+            m_undoStack->clear();
+        }
         rebuildProjectTreeNodes();
         statusBar()->showMessage(QStringLiteral("Graph cleared"), 2000);
+    });
+
+    connect(deleteAction, &QAction::triggered, this, [this]() {
+        if (m_scene) {
+            m_scene->deleteSelectionWithUndo();
+        }
     });
 
     connect(saveAction, &QAction::triggered, this, [this]() {
@@ -133,6 +154,9 @@ void MainWindow::setupMenusAndToolbar() {
             QMessageBox::critical(this, QStringLiteral("Open Failed"), QStringLiteral("Graph rebuild failed."));
             return;
         }
+        if (m_undoStack) {
+            m_undoStack->clear();
+        }
         m_currentFilePath = path;
         statusBar()->showMessage(QStringLiteral("Opened: %1").arg(path), 2500);
     });
@@ -145,6 +169,7 @@ void MainWindow::setupCentralArea() {
 
     m_scene = new EditorScene(this);
     m_scene->setSceneRect(0, 0, 3600, 2400);
+    m_scene->setUndoStack(m_undoStack);
 
     m_graphView = new GraphView(this);
     m_graphView->setScene(m_scene);
@@ -249,7 +274,7 @@ void MainWindow::setupSignalBindings() {
         if (!m_scene) {
             return;
         }
-        NodeItem* node = m_scene->createNode(typeName, scenePos);
+        NodeItem* node = m_scene->createNodeWithUndo(typeName, scenePos);
         if (node) {
             m_scene->clearSelection();
             node->setSelected(true);

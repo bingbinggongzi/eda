@@ -6,6 +6,7 @@
 #include <QPointF>
 #include <QString>
 
+class QUndoStack;
 class EdgeItem;
 class NodeItem;
 class PortItem;
@@ -18,6 +19,11 @@ public:
 
     NodeItem* createNode(const QString& typeName, const QPointF& scenePos);
     EdgeItem* createEdge(PortItem* outputPort, PortItem* inputPort);
+
+    NodeItem* createNodeWithUndo(const QString& typeName, const QPointF& scenePos);
+    EdgeItem* createEdgeWithUndo(PortItem* outputPort, PortItem* inputPort);
+    void deleteSelectionWithUndo();
+
     NodeItem* createNodeFromData(const NodeData& nodeData);
     EdgeItem* createEdgeFromData(const EdgeData& edgeData);
     void clearGraph();
@@ -28,6 +34,7 @@ public:
     void setSnapToGrid(bool enabled);
     bool snapToGrid() const;
     int gridSize() const;
+    void setUndoStack(QUndoStack* stack);
 
 signals:
     void selectionInfoChanged(const QString& itemType,
@@ -47,6 +54,7 @@ private slots:
     void onPortConnectionStart(PortItem* port);
     void onPortConnectionRelease(PortItem* port);
     void onSelectionChangedInternal();
+    void onNodeDragFinished(NodeItem* node, const QPointF& oldPos, const QPointF& newPos);
 
 private:
     QString nextNodeId();
@@ -71,4 +79,5 @@ private:
 
     PortItem* m_pendingPort = nullptr;
     EdgeItem* m_previewEdge = nullptr;
+    QUndoStack* m_undoStack = nullptr;
 };

@@ -65,6 +65,8 @@ add_executable(eda_ui_prototype
     src/model/GraphDocument.h
     src/model/GraphSerializer.h
     src/model/GraphSerializer.cpp
+    src/commands/DocumentStateCommand.h
+    src/commands/DocumentStateCommand.cpp
 )
 
 target_link_libraries(eda_ui_prototype PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)

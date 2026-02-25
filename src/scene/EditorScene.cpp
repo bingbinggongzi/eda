@@ -3,6 +3,7 @@
 #include "../items/EdgeItem.h"
 #include "../items/NodeItem.h"
 #include "../items/PortItem.h"
+#include "../commands/DocumentStateCommand.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,6 +11,48 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
 #include <QRegularExpression>
+#include <QSet>
+#include <QUndoStack>
+
+namespace {
+bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
+    if (a.nodes.size() != b.nodes.size() || a.edges.size() != b.edges.size()) {
+        return false;
+    }
+
+    auto samePort = [](const PortData& p1, const PortData& p2) {
+        return p1.id == p2.id && p1.name == p2.name && p1.direction == p2.direction;
+    };
+    auto sameNode = [&](const NodeData& n1, const NodeData& n2) {
+        if (n1.id != n2.id || n1.type != n2.type || n1.name != n2.name || n1.position != n2.position || n1.size != n2.size ||
+            n1.ports.size() != n2.ports.size()) {
+            return false;
+        }
+        for (int i = 0; i < n1.ports.size(); ++i) {
+            if (!samePort(n1.ports[i], n2.ports[i])) {
+                return false;
+            }
+        }
+        return true;
+    };
+    auto sameEdge = [](const EdgeData& e1, const EdgeData& e2) {
+        return e1.id == e2.id && e1.fromNodeId == e2.fromNodeId && e1.fromPortId == e2.fromPortId &&
+               e1.toNodeId == e2.toNodeId && e1.toPortId == e2.toPortId;
+    };
+
+    for (int i = 0; i < a.nodes.size(); ++i) {
+        if (!sameNode(a.nodes[i], b.nodes[i])) {
+            return false;
+        }
+    }
+    for (int i = 0; i < a.edges.size(); ++i) {
+        if (!sameEdge(a.edges[i], b.edges[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+}  // namespace
 
 EditorScene::EditorScene(QObject* parent)
     : QGraphicsScene(parent) {
@@ -24,6 +67,19 @@ NodeItem* EditorScene::createNode(const QString& typeName, const QPointF& sceneP
     node->setPos(snapPoint(scenePos));
     addItem(node);
     emit graphChanged();
+    return node;
+}
+
+NodeItem* EditorScene::createNodeWithUndo(const QString& typeName, const QPointF& scenePos) {
+    const GraphDocument before = toDocument();
+    NodeItem* node = createNode(typeName, scenePos);
+    if (!node || !m_undoStack) {
+        return node;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Add Node"), true));
+    }
     return node;
 }
 
@@ -52,6 +108,69 @@ EdgeItem* EditorScene::createEdge(PortItem* outputPort, PortItem* inputPort) {
     addItem(edge);
     emit graphChanged();
     return edge;
+}
+
+EdgeItem* EditorScene::createEdgeWithUndo(PortItem* outputPort, PortItem* inputPort) {
+    const GraphDocument before = toDocument();
+    EdgeItem* edge = createEdge(outputPort, inputPort);
+    if (!edge || !m_undoStack) {
+        return edge;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Connect"), true));
+    }
+    return edge;
+}
+
+void EditorScene::deleteSelectionWithUndo() {
+    const QList<QGraphicsItem*> selected = selectedItems();
+    if (selected.isEmpty()) {
+        return;
+    }
+
+    const GraphDocument before = toDocument();
+
+    QSet<QString> deletedNodeIds;
+    for (QGraphicsItem* item : selected) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            deletedNodeIds.insert(node->nodeId());
+        }
+    }
+
+    QList<QGraphicsItem*> toDelete;
+    for (QGraphicsItem* item : items()) {
+        if (EdgeItem* edge = dynamic_cast<EdgeItem*>(item)) {
+            if (!edge->sourcePort() || !edge->targetPort()) {
+                continue;
+            }
+            const NodeItem* fromNode = edge->sourcePort()->ownerNode();
+            const NodeItem* toNode = edge->targetPort()->ownerNode();
+            if ((fromNode && deletedNodeIds.contains(fromNode->nodeId())) ||
+                (toNode && deletedNodeIds.contains(toNode->nodeId())) || edge->isSelected()) {
+                toDelete.push_back(edge);
+            }
+        }
+    }
+    for (QGraphicsItem* item : selected) {
+        if (dynamic_cast<NodeItem*>(item)) {
+            toDelete.push_back(item);
+        }
+    }
+    for (QGraphicsItem* item : toDelete) {
+        removeItem(item);
+        delete item;
+    }
+
+    emit graphChanged();
+
+    if (!m_undoStack) {
+        return;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Delete"), true));
+    }
 }
 
 EdgeItem* EditorScene::createEdgeFromData(const EdgeData& edgeData) {
@@ -142,6 +261,12 @@ GraphDocument EditorScene::toDocument() const {
         }
     }
 
+    std::sort(doc.nodes.begin(), doc.nodes.end(), [](const NodeData& a, const NodeData& b) { return a.id < b.id; });
+    std::sort(doc.edges.begin(), doc.edges.end(), [](const EdgeData& a, const EdgeData& b) { return a.id < b.id; });
+    for (NodeData& node : doc.nodes) {
+        std::sort(node.ports.begin(), node.ports.end(), [](const PortData& a, const PortData& b) { return a.id < b.id; });
+    }
+
     return doc;
 }
 
@@ -171,6 +296,10 @@ bool EditorScene::snapToGrid() const {
 
 int EditorScene::gridSize() const {
     return 20;
+}
+
+void EditorScene::setUndoStack(QUndoStack* stack) {
+    m_undoStack = stack;
 }
 
 void EditorScene::mouseMoveEvent(QGraphicsSceneMouseEvent* event) {
@@ -243,6 +372,25 @@ void EditorScene::onSelectionChangedInternal() {
     emit selectionInfoChanged(QString(), QString(), QString(), QPointF(), 0, 0);
 }
 
+void EditorScene::onNodeDragFinished(NodeItem* node, const QPointF& oldPos, const QPointF& newPos) {
+    if (!node || !m_undoStack || oldPos == newPos) {
+        return;
+    }
+
+    GraphDocument after = toDocument();
+    GraphDocument before = after;
+    for (NodeData& nodeData : before.nodes) {
+        if (nodeData.id == node->nodeId()) {
+            nodeData.position = oldPos;
+            break;
+        }
+    }
+
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Move Node"), true));
+    }
+}
+
 QString EditorScene::nextNodeId() {
     return QStringLiteral("N_%1").arg(m_nodeCounter++);
 }
@@ -309,7 +457,11 @@ void EditorScene::finishConnectionAt(const QPointF& scenePos, PortItem* explicit
     if (target && canConnect(m_pendingPort, target)) {
         PortItem* outPort = (m_pendingPort->direction() == PortDirection::Output) ? m_pendingPort : target;
         PortItem* inPort = (m_pendingPort->direction() == PortDirection::Input) ? m_pendingPort : target;
-        createEdge(outPort, inPort);
+        if (m_undoStack) {
+            createEdgeWithUndo(outPort, inPort);
+        } else {
+            createEdge(outPort, inPort);
+        }
     }
 
     if (m_previewEdge) {
@@ -355,6 +507,7 @@ NodeItem* EditorScene::buildNode(const QString& nodeId,
                                  const QSizeF& size,
                                  const QVector<PortData>& ports) {
     NodeItem* node = new NodeItem(nodeId, typeName, displayName, size);
+    connect(node, &NodeItem::nodeDragFinished, this, &EditorScene::onNodeDragFinished);
     for (const PortData& port : ports) {
         const PortDirection dir =
             port.direction.compare(QStringLiteral("output"), Qt::CaseInsensitive) == 0 ? PortDirection::Output
