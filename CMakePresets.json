@@ -1,0 +1,58 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "dev-debug",
+      "displayName": "Dev Debug (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}"
+      }
+    },
+    {
+      "name": "dev-release",
+      "displayName": "Dev Release (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}"
+      }
+    },
+    {
+      "name": "vs2022-debug",
+      "displayName": "VS2022 Debug",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build-vs",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev-debug",
+      "configurePreset": "dev-debug"
+    },
+    {
+      "name": "dev-release",
+      "configurePreset": "dev-release"
+    },
+    {
+      "name": "vs2022-debug",
+      "configurePreset": "vs2022-debug",
+      "configuration": "Debug"
+    }
+  ]
+}

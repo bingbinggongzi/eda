@@ -2,9 +2,13 @@
 /build/
 /build_*/
 /cmake-build-*/
+/out/
+/dist/
 
 # IDE files
 /.idea/
+/.vs/
+/CMakeUserPresets.json
 
 # Logs
 *.log
@@ -16,3 +20,4 @@
 *.ilk
 *.idb
 *.vcxproj.user
+*.sln
