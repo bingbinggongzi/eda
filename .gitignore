@@ -1,0 +1,18 @@
+# Build artifacts
+/build/
+/build_*/
+/cmake-build-*/
+
+# IDE files
+/.idea/
+
+# Logs
+*.log
+
+# Qt/CMake temporary files
+*.obj
+*.o
+*.pdb
+*.ilk
+*.idb
+*.vcxproj.user
