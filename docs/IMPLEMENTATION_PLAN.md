@@ -206,10 +206,12 @@ Acceptance:
 - Multi-document file lifecycle added (`New/Open/Close/Save As` + dirty prompts)
 - Panel widgets decomposed into `src/panels` for project tree/property/palette ownership
 - Palette drag-drop preview feedback added in canvas foreground
+- File lifecycle regression tests added (`New/Open/Save As/Close` + dirty prompt branches)
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Queue currently empty (all planned items completed)
+1. Routing v2: improve obstacle avoidance quality (fewer bends, stronger directional constraints)
+2. Auto layout: provide one-click layered/grid arrangement for selected graph
 
 ## 8. Merge Quality Gates
 

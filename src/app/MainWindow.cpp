@@ -48,6 +48,112 @@ MainWindow::MainWindow(QWidget* parent)
     rebuildProjectTreeNodes();
 }
 
+int MainWindow::documentCount() const {
+    return m_documents.size();
+}
+
+int MainWindow::activeDocumentIndex() const {
+    return currentDocumentIndex();
+}
+
+bool MainWindow::isDocumentDirty(int index) const {
+    if (index < 0 || index >= m_documents.size()) {
+        return false;
+    }
+    return m_documents[index].dirty;
+}
+
+QString MainWindow::documentFilePath(int index) const {
+    if (index < 0 || index >= m_documents.size()) {
+        return QString();
+    }
+    return m_documents[index].filePath;
+}
+
+EditorScene* MainWindow::activeScene() const {
+    return m_scene;
+}
+
+int MainWindow::newDocument(const QString& title) {
+    const QString resolvedTitle = title.isEmpty() ? QStringLiteral("Untitled-%1").arg(m_untitledCounter++) : title;
+    const int index = createEditorTab(resolvedTitle);
+    if (index >= 0) {
+        m_editorTabs->setCurrentIndex(index);
+    }
+    return index;
+}
+
+bool MainWindow::openDocumentByDialog() {
+    const QString path = requestOpenFilePath();
+    if (path.isEmpty()) {
+        return false;
+    }
+    return openDocumentFromPath(path);
+}
+
+bool MainWindow::openDocumentFromPath(const QString& path) {
+    if (path.isEmpty()) {
+        return false;
+    }
+
+    GraphDocument document;
+    QString error;
+    if (!GraphSerializer::loadFromFile(&document, path, &error)) {
+        showCriticalMessage(QStringLiteral("Open Failed"), error);
+        return false;
+    }
+
+    const QString title = QFileInfo(path).fileName();
+    const int index = createEditorTab(title, &document, path);
+    if (index < 0) {
+        return false;
+    }
+
+    m_editorTabs->setCurrentIndex(index);
+    statusBar()->showMessage(QStringLiteral("Opened: %1").arg(path), 2500);
+    return true;
+}
+
+bool MainWindow::saveCurrentDocument(bool saveAs) {
+    const int index = currentDocumentIndex();
+    if (index < 0) {
+        return false;
+    }
+    return saveDocument(index, saveAs);
+}
+
+bool MainWindow::closeDocument(int index) {
+    const int resolvedIndex = (index >= 0) ? index : currentDocumentIndex();
+    if (resolvedIndex < 0) {
+        return false;
+    }
+    return closeDocumentTab(resolvedIndex);
+}
+
+void MainWindow::setOpenFileDialogProvider(const std::function<QString()>& provider) {
+    m_openFileDialogProvider = provider;
+}
+
+void MainWindow::setSaveFileDialogProvider(const std::function<QString(const QString& suggested)>& provider) {
+    m_saveFileDialogProvider = provider;
+}
+
+void MainWindow::setUnsavedPromptProvider(
+    const std::function<QMessageBox::StandardButton(const QString& docTitle)>& provider) {
+    m_unsavedPromptProvider = provider;
+}
+
+void MainWindow::setCriticalMessageProvider(const std::function<void(const QString& title, const QString& text)>& provider) {
+    m_criticalMessageProvider = provider;
+}
+
+void MainWindow::clearDialogProviders() {
+    m_openFileDialogProvider = nullptr;
+    m_saveFileDialogProvider = nullptr;
+    m_unsavedPromptProvider = nullptr;
+    m_criticalMessageProvider = nullptr;
+}
+
 void MainWindow::setupWindow() {
     resize(1600, 940);
     setWindowTitle(QStringLiteral("EDA Editor Prototype"));
@@ -114,53 +220,23 @@ void MainWindow::setupMenusAndToolbar() {
     toolBar->addAction(style()->standardIcon(QStyle::SP_MediaPlay), QStringLiteral("Run"));
 
     connect(newAction, &QAction::triggered, this, [this]() {
-        const int index = createEditorTab(QStringLiteral("Untitled-%1").arg(m_untitledCounter++));
-        if (index >= 0) {
-            m_editorTabs->setCurrentIndex(index);
-        }
+        newDocument();
     });
 
     connect(openAction, &QAction::triggered, this, [this]() {
-        const QString path = QFileDialog::getOpenFileName(
-            this, QStringLiteral("Open Graph"), QString(), QStringLiteral("EDA Graph (*.json)"));
-        if (path.isEmpty()) {
-            return;
-        }
-
-        GraphDocument document;
-        QString error;
-        if (!GraphSerializer::loadFromFile(&document, path, &error)) {
-            QMessageBox::critical(this, QStringLiteral("Open Failed"), error);
-            return;
-        }
-
-        const QString title = QFileInfo(path).fileName();
-        const int index = createEditorTab(title, &document, path);
-        if (index >= 0) {
-            m_editorTabs->setCurrentIndex(index);
-            statusBar()->showMessage(QStringLiteral("Opened: %1").arg(path), 2500);
-        }
+        openDocumentByDialog();
     });
 
     connect(m_saveAction, &QAction::triggered, this, [this]() {
-        const int index = currentDocumentIndex();
-        if (index >= 0) {
-            saveDocument(index, false);
-        }
+        saveCurrentDocument(false);
     });
 
     connect(m_saveAsAction, &QAction::triggered, this, [this]() {
-        const int index = currentDocumentIndex();
-        if (index >= 0) {
-            saveDocument(index, true);
-        }
+        saveCurrentDocument(true);
     });
 
     connect(closeTabAction, &QAction::triggered, this, [this]() {
-        const int index = currentDocumentIndex();
-        if (index >= 0) {
-            closeDocumentTab(index);
-        }
+        closeDocument();
     });
 
     connect(clearAction, &QAction::triggered, this, [this]() {
@@ -312,7 +388,7 @@ int MainWindow::createEditorTab(const QString& title, const GraphDocument* initi
         }
         delete undoStack;
         delete scene;
-        QMessageBox::critical(this, QStringLiteral("Open Failed"), QStringLiteral("Graph rebuild failed."));
+        showCriticalMessage(QStringLiteral("Open Failed"), QStringLiteral("Graph rebuild failed."));
         return -1;
     }
 
@@ -443,6 +519,41 @@ int MainWindow::currentDocumentIndex() const {
     return m_editorTabs ? m_editorTabs->currentIndex() : -1;
 }
 
+QString MainWindow::requestOpenFilePath() const {
+    if (m_openFileDialogProvider) {
+        return m_openFileDialogProvider();
+    }
+    return QFileDialog::getOpenFileName(
+        const_cast<MainWindow*>(this), QStringLiteral("Open Graph"), QString(), QStringLiteral("EDA Graph (*.json)"));
+}
+
+QString MainWindow::requestSaveFilePath(const QString& suggested) const {
+    if (m_saveFileDialogProvider) {
+        return m_saveFileDialogProvider(suggested);
+    }
+    return QFileDialog::getSaveFileName(
+        const_cast<MainWindow*>(this), QStringLiteral("Save Graph"), suggested, QStringLiteral("EDA Graph (*.json)"));
+}
+
+QMessageBox::StandardButton MainWindow::requestUnsavedDecision(const QString& docTitle) const {
+    if (m_unsavedPromptProvider) {
+        return m_unsavedPromptProvider(docTitle);
+    }
+    return QMessageBox::warning(const_cast<MainWindow*>(this),
+                                QStringLiteral("Unsaved Changes"),
+                                QStringLiteral("Document \"%1\" has unsaved changes. Save before closing?").arg(docTitle),
+                                QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
+                                QMessageBox::Save);
+}
+
+void MainWindow::showCriticalMessage(const QString& title, const QString& text) const {
+    if (m_criticalMessageProvider) {
+        m_criticalMessageProvider(title, text);
+        return;
+    }
+    QMessageBox::critical(const_cast<MainWindow*>(this), title, text);
+}
+
 bool MainWindow::saveDocument(int index, bool saveAs) {
     if (index < 0 || index >= m_documents.size()) {
         return false;
@@ -454,8 +565,7 @@ bool MainWindow::saveDocument(int index, bool saveAs) {
         const QString suggested = path.isEmpty()
             ? QStringLiteral("%1.eda.json").arg(doc.title.isEmpty() ? QStringLiteral("graph") : doc.title)
             : path;
-        path = QFileDialog::getSaveFileName(
-            this, QStringLiteral("Save Graph"), suggested, QStringLiteral("EDA Graph (*.json)"));
+        path = requestSaveFilePath(suggested);
     }
     if (path.isEmpty()) {
         return false;
@@ -464,7 +574,7 @@ bool MainWindow::saveDocument(int index, bool saveAs) {
     QString error;
     const GraphDocument document = doc.scene->toDocument();
     if (!GraphSerializer::saveToFile(document, path, &error)) {
-        QMessageBox::critical(this, QStringLiteral("Save Failed"), error);
+        showCriticalMessage(QStringLiteral("Save Failed"), error);
         return false;
     }
 
@@ -489,12 +599,7 @@ bool MainWindow::maybeSaveDocument(int index) {
         return true;
     }
 
-    const QMessageBox::StandardButton choice = QMessageBox::warning(
-        this,
-        QStringLiteral("Unsaved Changes"),
-        QStringLiteral("Document \"%1\" has unsaved changes. Save before closing?").arg(doc.title),
-        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
-        QMessageBox::Save);
+    const QMessageBox::StandardButton choice = requestUnsavedDecision(doc.title);
 
     if (choice == QMessageBox::Save) {
         return saveDocument(index, false);

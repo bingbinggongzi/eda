@@ -19,6 +19,7 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Multi-document lifecycle (`New/Open/Close/Save As`) with dirty-state prompts
 - Panel decomposition under `src/panels` (`ProjectTreePanel`, `PropertyPanel`, `PalettePanel`)
 - Palette drag-drop visual feedback (drop preview box + guide lines)
+- Lifecycle regression tests for `New/Open/Save As/Close` and unsaved prompt decisions
 
 ## Requirements
 

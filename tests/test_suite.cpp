@@ -1,11 +1,14 @@
 #include "app/GraphView.h"
+#include "app/MainWindow.h"
 #include "items/EdgeItem.h"
 #include "items/NodeItem.h"
 #include "model/GraphSerializer.h"
 #include "scene/EditorScene.h"
 
+#include <QCoreApplication>
 #include <QDataStream>
 #include <QFile>
+#include <QFileInfo>
 #include <QMimeData>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -59,6 +62,8 @@ private slots:
     void granularCommandMerge();
     void obstacleRoutingToggle();
     void toolboxMimeDropAccepted();
+    void fileLifecycleNewSaveAsClose();
+    void fileLifecycleOpenAndDirtyPrompt();
     void stressLargeGraphBuild();
 };
 
@@ -318,6 +323,89 @@ void EdaSuite::toolboxMimeDropAccepted() {
     const QList<QVariant> args = droppedSpy.takeFirst();
     QCOMPARE(args[0].toString(), QStringLiteral("Voter"));
     QVERIFY(args[1].canConvert<QPointF>());
+}
+
+void EdaSuite::fileLifecycleNewSaveAsClose() {
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString savePath = tmp.filePath(QStringLiteral("save_as_graph.json"));
+
+    MainWindow window;
+    QCOMPARE(window.documentCount(), 1);
+
+    const int newIndex = window.newDocument(QStringLiteral("DocForSaveAs"));
+    QVERIFY(newIndex >= 0);
+    QCOMPARE(window.activeDocumentIndex(), newIndex);
+    QCOMPARE(window.documentCount(), 2);
+
+    EditorScene* scene = window.activeScene();
+    QVERIFY(scene != nullptr);
+    QVERIFY(scene->createNodeWithUndo(QStringLiteral("Voter"), QPointF(120.0, 120.0)) != nullptr);
+    QCoreApplication::processEvents();
+    QVERIFY(window.isDocumentDirty(newIndex));
+
+    window.setSaveFileDialogProvider([savePath](const QString&) { return savePath; });
+    QVERIFY(window.saveCurrentDocument(true));
+    QVERIFY(QFileInfo::exists(savePath));
+    QVERIFY(!window.isDocumentDirty(newIndex));
+    QCOMPARE(window.documentFilePath(newIndex), savePath);
+
+    scene = window.activeScene();
+    QVERIFY(scene != nullptr);
+    QVERIFY(scene->createNodeWithUndo(QStringLiteral("Sum"), QPointF(220.0, 120.0)) != nullptr);
+    QCoreApplication::processEvents();
+    QVERIFY(window.isDocumentDirty(newIndex));
+
+    window.setUnsavedPromptProvider([](const QString&) { return QMessageBox::Save; });
+    window.setSaveFileDialogProvider([savePath](const QString&) { return savePath; });
+    QVERIFY(window.closeDocument(newIndex));
+    QCOMPARE(window.documentCount(), 1);
+}
+
+void EdaSuite::fileLifecycleOpenAndDirtyPrompt() {
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString openPath = tmp.filePath(QStringLiteral("open_graph.json"));
+
+    GraphDocument doc;
+    doc.schemaVersion = 1;
+    doc.nodes.push_back(NodeData{QStringLiteral("N_1"),
+                                 QStringLiteral("tm_Node"),
+                                 QStringLiteral("OpenNode"),
+                                 QPointF(10.0, 20.0),
+                                 QSizeF(120.0, 72.0),
+                                 {PortData{QStringLiteral("P_1"), QStringLiteral("in1"), QStringLiteral("input")},
+                                  PortData{QStringLiteral("P_2"), QStringLiteral("out1"), QStringLiteral("output")}},
+                                 {}});
+    QString error;
+    QVERIFY(GraphSerializer::saveToFile(doc, openPath, &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+
+    MainWindow window;
+    const int beforeCount = window.documentCount();
+
+    window.setOpenFileDialogProvider([openPath]() { return openPath; });
+    QVERIFY(window.openDocumentByDialog());
+
+    QCOMPARE(window.documentCount(), beforeCount + 1);
+    const int openedIndex = window.activeDocumentIndex();
+    QVERIFY(openedIndex >= 0);
+    QCOMPARE(window.documentFilePath(openedIndex), openPath);
+    QVERIFY(!window.isDocumentDirty(openedIndex));
+
+    EditorScene* scene = window.activeScene();
+    QVERIFY(scene != nullptr);
+    QVERIFY(scene->createNodeWithUndo(QStringLiteral("tm_Node"), QPointF(300.0, 200.0)) != nullptr);
+    QCoreApplication::processEvents();
+    QVERIFY(window.isDocumentDirty(openedIndex));
+
+    window.setUnsavedPromptProvider([](const QString&) { return QMessageBox::Cancel; });
+    QVERIFY(!window.closeDocument(openedIndex));
+    QCOMPARE(window.documentCount(), beforeCount + 1);
+
+    window.setUnsavedPromptProvider([](const QString&) { return QMessageBox::Discard; });
+    QVERIFY(window.closeDocument(openedIndex));
+    QCOMPARE(window.documentCount(), beforeCount);
 }
 
 void EdaSuite::stressLargeGraphBuild() {

@@ -4,9 +4,12 @@
 
 #include <QMainWindow>
 #include <QHash>
+#include <QMessageBox>
 #include <QPointF>
 #include <QString>
 #include <QVector>
+
+#include <functional>
 
 class EditorScene;
 class GraphView;
@@ -28,6 +31,25 @@ class MainWindow : public QMainWindow {
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+
+    // Automation/test helpers
+    int documentCount() const;
+    int activeDocumentIndex() const;
+    bool isDocumentDirty(int index) const;
+    QString documentFilePath(int index) const;
+    EditorScene* activeScene() const;
+
+    int newDocument(const QString& title = QString());
+    bool openDocumentByDialog();
+    bool openDocumentFromPath(const QString& path);
+    bool saveCurrentDocument(bool saveAs = false);
+    bool closeDocument(int index = -1);
+
+    void setOpenFileDialogProvider(const std::function<QString()>& provider);
+    void setSaveFileDialogProvider(const std::function<QString(const QString& suggested)>& provider);
+    void setUnsavedPromptProvider(const std::function<QMessageBox::StandardButton(const QString& docTitle)>& provider);
+    void setCriticalMessageProvider(const std::function<void(const QString& title, const QString& text)>& provider);
+    void clearDialogProviders();
 
 private:
     struct DocumentContext {
@@ -52,6 +74,10 @@ private:
     int documentIndexForScene(const EditorScene* scene) const;
     int documentIndexForUndoStack(const QUndoStack* stack) const;
     int currentDocumentIndex() const;
+    QString requestOpenFilePath() const;
+    QString requestSaveFilePath(const QString& suggested) const;
+    QMessageBox::StandardButton requestUnsavedDecision(const QString& docTitle) const;
+    void showCriticalMessage(const QString& title, const QString& text) const;
     bool saveDocument(int index, bool saveAs);
     bool maybeSaveDocument(int index);
     bool closeDocumentTab(int index);
@@ -90,4 +116,9 @@ private:
     bool m_propertyTableUpdating = false;
     int m_untitledCounter = 1;
     QVector<DocumentContext> m_documents;
+
+    std::function<QString()> m_openFileDialogProvider;
+    std::function<QString(const QString& suggested)> m_saveFileDialogProvider;
+    std::function<QMessageBox::StandardButton(const QString& docTitle)> m_unsavedPromptProvider;
+    std::function<void(const QString& title, const QString& text)> m_criticalMessageProvider;
 };
