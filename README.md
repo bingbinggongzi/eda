@@ -18,6 +18,7 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Dedicated move/rename/property undo commands with merge support
 - Multi-document lifecycle (`New/Open/Close/Save As`) with dirty-state prompts
 - Panel decomposition under `src/panels` (`ProjectTreePanel`, `PropertyPanel`, `PalettePanel`)
+- Palette drag-drop visual feedback (drop preview box + guide lines)
 
 ## Requirements
 

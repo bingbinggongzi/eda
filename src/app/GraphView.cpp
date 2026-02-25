@@ -1,9 +1,13 @@
 #include "GraphView.h"
 #include "items/NodeItem.h"
+#include "model/ComponentCatalog.h"
+#include "scene/EditorScene.h"
 
 #include <cmath>
 
 #include <QDragEnterEvent>
+#include <QDragLeaveEvent>
+#include <QDragMoveEvent>
 #include <QDropEvent>
 #include <QMimeData>
 #include <QMouseEvent>
@@ -11,6 +15,14 @@
 #include <QScrollBar>
 #include <QtGlobal>
 #include <QWheelEvent>
+
+namespace {
+QSizeF previewSizeForType(const QString& typeName) {
+    const ComponentCatalog& catalog = ComponentCatalog::instance();
+    const ComponentSpec* spec = catalog.find(typeName);
+    return spec ? spec->size : catalog.fallback().size;
+}
+}  // namespace
 
 GraphView::GraphView(QWidget* parent)
     : QGraphicsView(parent) {
@@ -62,21 +74,41 @@ void GraphView::drawForeground(QPainter* painter, const QRectF& rect) {
     if (!scene()) {
         return;
     }
+
     const QList<QGraphicsItem*> selected = scene()->selectedItems();
-    if (selected.size() != 1) {
+    if (selected.size() == 1) {
+        NodeItem* node = dynamic_cast<NodeItem*>(selected.first());
+        if (node) {
+            const QPointF center = node->sceneBoundingRect().center();
+            QPen guidePen(QColor(255, 153, 51, 150), 1.0, Qt::DashLine);
+            painter->setPen(guidePen);
+            painter->drawLine(QPointF(rect.left(), center.y()), QPointF(rect.right(), center.y()));
+            painter->drawLine(QPointF(center.x(), rect.top()), QPointF(center.x(), rect.bottom()));
+        }
+    }
+
+    if (!m_dropPreviewActive || m_dropPreviewType.isEmpty()) {
         return;
     }
 
-    NodeItem* node = dynamic_cast<NodeItem*>(selected.first());
-    if (!node) {
-        return;
-    }
+    const QPointF previewPos = effectiveDropPreviewPos();
+    const QSizeF previewSize = previewSizeForType(m_dropPreviewType);
+    const QRectF previewRect(previewPos, previewSize);
 
-    const QPointF center = node->sceneBoundingRect().center();
-    QPen guidePen(QColor(255, 153, 51, 150), 1.0, Qt::DashLine);
-    painter->setPen(guidePen);
-    painter->drawLine(QPointF(rect.left(), center.y()), QPointF(rect.right(), center.y()));
-    painter->drawLine(QPointF(center.x(), rect.top()), QPointF(center.x(), rect.bottom()));
+    painter->save();
+    painter->setPen(QPen(QColor(64, 145, 255, 210), 1.4, Qt::DashLine));
+    painter->setBrush(QColor(64, 145, 255, 36));
+    painter->drawRoundedRect(previewRect, 4.0, 4.0);
+
+    painter->setPen(QPen(QColor(64, 145, 255, 130), 1.0, Qt::DotLine));
+    painter->drawLine(QPointF(rect.left(), previewRect.center().y()), QPointF(rect.right(), previewRect.center().y()));
+    painter->drawLine(QPointF(previewRect.center().x(), rect.top()), QPointF(previewRect.center().x(), rect.bottom()));
+
+    painter->setPen(QColor(36, 97, 196));
+    painter->drawText(previewRect.adjusted(8.0, 2.0, -6.0, -previewRect.height() + 20.0),
+                      Qt::AlignLeft | Qt::AlignVCenter,
+                      m_dropPreviewType);
+    painter->restore();
 }
 
 void GraphView::wheelEvent(QWheelEvent* event) {
@@ -145,16 +177,47 @@ void GraphView::applyZoom(qreal factor, const QPoint& anchorPos) {
 
 void GraphView::dragEnterEvent(QDragEnterEvent* event) {
     if (event->mimeData()->hasText()) {
-        event->acceptProposedAction();
-        return;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        const QPoint viewPos = event->position().toPoint();
+#else
+        const QPoint viewPos = event->pos();
+#endif
+        const QString typeName = event->mimeData()->text().trimmed();
+        if (!typeName.isEmpty()) {
+            m_dropPreviewActive = true;
+            m_dropPreviewType = typeName;
+            m_dropPreviewPos = mapToScene(viewPos);
+            viewport()->update();
+            event->acceptProposedAction();
+            return;
+        }
     }
     QGraphicsView::dragEnterEvent(event);
 }
 
+void GraphView::dragLeaveEvent(QDragLeaveEvent* event) {
+    m_dropPreviewActive = false;
+    m_dropPreviewType.clear();
+    viewport()->update();
+    QGraphicsView::dragLeaveEvent(event);
+}
+
 void GraphView::dragMoveEvent(QDragMoveEvent* event) {
     if (event->mimeData()->hasText()) {
-        event->acceptProposedAction();
-        return;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        const QPoint viewPos = event->position().toPoint();
+#else
+        const QPoint viewPos = event->pos();
+#endif
+        const QString typeName = event->mimeData()->text().trimmed();
+        if (!typeName.isEmpty()) {
+            m_dropPreviewActive = true;
+            m_dropPreviewType = typeName;
+            m_dropPreviewPos = mapToScene(viewPos);
+            viewport()->update();
+            event->acceptProposedAction();
+            return;
+        }
     }
     QGraphicsView::dragMoveEvent(event);
 }
@@ -168,10 +231,32 @@ void GraphView::dropEvent(QDropEvent* event) {
 #else
             const QPoint viewPos = event->pos();
 #endif
-            emit paletteItemDropped(typeName, mapToScene(viewPos));
+            m_dropPreviewPos = mapToScene(viewPos);
+            emit paletteItemDropped(typeName, effectiveDropPreviewPos());
+            m_dropPreviewActive = false;
+            m_dropPreviewType.clear();
+            viewport()->update();
             event->acceptProposedAction();
             return;
         }
     }
+    m_dropPreviewActive = false;
+    m_dropPreviewType.clear();
+    viewport()->update();
     QGraphicsView::dropEvent(event);
+}
+
+QPointF GraphView::effectiveDropPreviewPos() const {
+    if (!scene()) {
+        return m_dropPreviewPos;
+    }
+
+    QPointF snapped = m_dropPreviewPos;
+    const EditorScene* editorScene = dynamic_cast<const EditorScene*>(scene());
+    if (editorScene && editorScene->snapToGrid()) {
+        const int g = editorScene->gridSize();
+        snapped.setX(std::round(snapped.x() / g) * g);
+        snapped.setY(std::round(snapped.y() / g) * g);
+    }
+    return snapped;
 }

@@ -205,6 +205,7 @@ Acceptance:
 - Dedicated move/rename/property command classes integrated with merge behavior
 - Multi-document file lifecycle added (`New/Open/Close/Save As` + dirty prompts)
 - Panel widgets decomposed into `src/panels` for project tree/property/palette ownership
+- Palette drag-drop preview feedback added in canvas foreground
 
 ## 7. Current Execution Queue (Next Up)
 
