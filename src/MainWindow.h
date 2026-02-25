@@ -37,6 +37,8 @@ private:
                              int inputCount,
                              int outputCount);
     void rebuildProjectTreeNodes();
+    void onPropertyCellChanged(int row, int column);
+    QTreeWidgetItem* findTreeItemByNodeId(const QString& nodeId) const;
 
     QMenu* m_viewMenu = nullptr;
     QTabWidget* m_editorTabs = nullptr;
@@ -52,4 +54,6 @@ private:
     QTreeWidgetItem* m_graphNodesRoot = nullptr;
     QString m_currentFilePath;
     QUndoStack* m_undoStack = nullptr;
+    QString m_selectedItemType;
+    QString m_selectedItemId;
 };

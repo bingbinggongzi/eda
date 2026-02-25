@@ -217,7 +217,7 @@ void MainWindow::setupLeftDocks() {
     m_propertyTable->verticalHeader()->setVisible(false);
     m_propertyTable->setAlternatingRowColors(true);
     m_propertyTable->setShowGrid(false);
-    m_propertyTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_propertyTable->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
     m_propertyDock->setWidget(m_propertyTable);
     addDockWidget(Qt::LeftDockWidgetArea, m_propertyDock);
 
@@ -288,6 +288,7 @@ void MainWindow::setupSignalBindings() {
 
     connect(m_scene, &EditorScene::selectionInfoChanged, this, &MainWindow::updatePropertyTable);
     connect(m_scene, &EditorScene::graphChanged, this, &MainWindow::rebuildProjectTreeNodes);
+    connect(m_propertyTable, &QTableWidget::cellChanged, this, &MainWindow::onPropertyCellChanged);
 
     connect(m_projectTree, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem* item) {
         if (!item || !m_scene) {
@@ -367,19 +368,38 @@ void MainWindow::updatePropertyTable(const QString& itemType,
                                      int inputCount,
                                      int outputCount) {
     const QSignalBlocker blocker(m_propertyTable);
-    auto setRow = [this](int row, const QString& key, const QString& val) {
-        m_propertyTable->setItem(row, 0, new QTableWidgetItem(key));
-        m_propertyTable->setItem(row, 1, new QTableWidgetItem(val));
+    auto setRow = [this](int row, const QString& key, const QString& val, bool editable) {
+        auto* keyItem = new QTableWidgetItem(key);
+        keyItem->setFlags(keyItem->flags() & ~Qt::ItemIsEditable);
+
+        auto* valueItem = new QTableWidgetItem(val);
+        if (!editable) {
+            valueItem->setFlags(valueItem->flags() & ~Qt::ItemIsEditable);
+        }
+
+        m_propertyTable->setItem(row, 0, keyItem);
+        m_propertyTable->setItem(row, 1, valueItem);
     };
 
-    setRow(0, QStringLiteral("Selection"), itemType.isEmpty() ? QStringLiteral("(none)") : itemType);
-    setRow(1, QStringLiteral("ID"), itemId);
-    setRow(2, QStringLiteral("Name"), displayName);
-    setRow(3, QStringLiteral("X"), QString::number(pos.x(), 'f', 1));
-    setRow(4, QStringLiteral("Y"), QString::number(pos.y(), 'f', 1));
-    setRow(5, QStringLiteral("Inputs"), QString::number(inputCount));
-    setRow(6, QStringLiteral("Outputs"), QString::number(outputCount));
-    setRow(7, QStringLiteral("Grid Snap"), m_scene && m_scene->snapToGrid() ? QStringLiteral("On") : QStringLiteral("Off"));
+    m_selectedItemType = itemType;
+    m_selectedItemId = itemId;
+
+    const bool nodeEditable = (itemType == QStringLiteral("node"));
+    setRow(0, QStringLiteral("Selection"), itemType.isEmpty() ? QStringLiteral("(none)") : itemType, false);
+    setRow(1, QStringLiteral("ID"), itemId, false);
+    setRow(2, QStringLiteral("Name"), displayName, nodeEditable);
+    setRow(3, QStringLiteral("X"), QString::number(pos.x(), 'f', 1), nodeEditable);
+    setRow(4, QStringLiteral("Y"), QString::number(pos.y(), 'f', 1), nodeEditable);
+    setRow(5, QStringLiteral("Inputs"), QString::number(inputCount), false);
+    setRow(6, QStringLiteral("Outputs"), QString::number(outputCount), false);
+    setRow(7, QStringLiteral("Grid Snap"), m_scene && m_scene->snapToGrid() ? QStringLiteral("On") : QStringLiteral("Off"), true);
+
+    if (itemType == QStringLiteral("node")) {
+        if (QTreeWidgetItem* item = findTreeItemByNodeId(itemId)) {
+            const QSignalBlocker treeBlocker(m_projectTree);
+            m_projectTree->setCurrentItem(item);
+        }
+    }
 }
 
 void MainWindow::rebuildProjectTreeNodes() {
@@ -404,4 +424,63 @@ void MainWindow::rebuildProjectTreeNodes() {
         m_graphNodesRoot->addChild(child);
     }
     m_graphNodesRoot->setExpanded(true);
+}
+
+void MainWindow::onPropertyCellChanged(int row, int column) {
+    if (!m_scene || column != 1) {
+        return;
+    }
+    QTableWidgetItem* valueItem = m_propertyTable->item(row, column);
+    if (!valueItem) {
+        return;
+    }
+    const QString value = valueItem->text().trimmed();
+
+    if (row == 7) {
+        const QString v = value.toLower();
+        const bool on = (v == QStringLiteral("on") || v == QStringLiteral("true") || v == QStringLiteral("1") ||
+                         v == QStringLiteral("yes"));
+        m_scene->setSnapToGrid(on);
+        updatePropertyTable(m_selectedItemType,
+                            m_selectedItemId,
+                            m_propertyTable->item(2, 1) ? m_propertyTable->item(2, 1)->text() : QString(),
+                            QPointF(m_propertyTable->item(3, 1)->text().toDouble(), m_propertyTable->item(4, 1)->text().toDouble()),
+                            m_propertyTable->item(5, 1)->text().toInt(),
+                            m_propertyTable->item(6, 1)->text().toInt());
+        return;
+    }
+
+    if (m_selectedItemType != QStringLiteral("node") || m_selectedItemId.isEmpty()) {
+        return;
+    }
+
+    if (row == 2) {
+        if (m_scene->renameNodeWithUndo(m_selectedItemId, value)) {
+            rebuildProjectTreeNodes();
+        }
+        return;
+    }
+
+    if (row == 3 || row == 4) {
+        bool okX = false;
+        bool okY = false;
+        const double x = m_propertyTable->item(3, 1)->text().toDouble(&okX);
+        const double y = m_propertyTable->item(4, 1)->text().toDouble(&okY);
+        if (okX && okY) {
+            m_scene->moveNodeWithUndo(m_selectedItemId, QPointF(x, y));
+        }
+    }
+}
+
+QTreeWidgetItem* MainWindow::findTreeItemByNodeId(const QString& nodeId) const {
+    if (!m_graphNodesRoot || nodeId.isEmpty()) {
+        return nullptr;
+    }
+    for (int i = 0; i < m_graphNodesRoot->childCount(); ++i) {
+        QTreeWidgetItem* child = m_graphNodesRoot->child(i);
+        if (child && child->data(0, Qt::UserRole).toString() == nodeId) {
+            return child;
+        }
+    }
+    return nullptr;
 }

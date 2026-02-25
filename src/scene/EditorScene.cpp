@@ -123,6 +123,67 @@ EdgeItem* EditorScene::createEdgeWithUndo(PortItem* outputPort, PortItem* inputP
     return edge;
 }
 
+bool EditorScene::renameNodeWithUndo(const QString& nodeId, const QString& newName) {
+    NodeItem* target = nullptr;
+    for (QGraphicsItem* item : items()) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            if (node->nodeId() == nodeId) {
+                target = node;
+                break;
+            }
+        }
+    }
+    if (!target || target->displayName() == newName) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    target->setDisplayName(newName);
+    emit graphChanged();
+
+    if (!m_undoStack) {
+        return true;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Rename Node"), true));
+    }
+    return true;
+}
+
+bool EditorScene::moveNodeWithUndo(const QString& nodeId, const QPointF& newPos) {
+    NodeItem* target = nullptr;
+    for (QGraphicsItem* item : items()) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            if (node->nodeId() == nodeId) {
+                target = node;
+                break;
+            }
+        }
+    }
+    if (!target) {
+        return false;
+    }
+
+    const QPointF snapped = snapPoint(newPos);
+    if (target->pos() == snapped) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    target->setPos(snapped);
+    emit graphChanged();
+
+    if (!m_undoStack) {
+        return true;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Move Node"), true));
+    }
+    return true;
+}
+
 void EditorScene::deleteSelectionWithUndo() {
     const QList<QGraphicsItem*> selected = selectedItems();
     if (selected.isEmpty()) {

@@ -23,6 +23,8 @@ public:
     NodeItem* createNodeWithUndo(const QString& typeName, const QPointF& scenePos);
     EdgeItem* createEdgeWithUndo(PortItem* outputPort, PortItem* inputPort);
     void deleteSelectionWithUndo();
+    bool renameNodeWithUndo(const QString& nodeId, const QString& newName);
+    bool moveNodeWithUndo(const QString& nodeId, const QPointF& newPos);
 
     NodeItem* createNodeFromData(const NodeData& nodeData);
     EdgeItem* createEdgeFromData(const EdgeData& edgeData);
