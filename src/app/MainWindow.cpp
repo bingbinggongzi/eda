@@ -7,10 +7,13 @@
 #include "model/GraphSerializer.h"
 #include "scene/EditorScene.h"
 
-#include <QDockWidget>
+#include <QAction>
+#include <QCloseEvent>
 #include <QComboBox>
+#include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QGraphicsScene>
 #include <QGraphicsSimpleTextItem>
 #include <QHeaderView>
@@ -19,6 +22,7 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStatusBar>
@@ -28,9 +32,9 @@
 #include <QToolBar>
 #include <QToolBox>
 #include <QTreeWidget>
+#include <QUndoGroup>
 #include <QUndoStack>
 #include <QVBoxLayout>
-#include <QMessageBox>
 
 #include <algorithm>
 
@@ -54,7 +58,7 @@ void MainWindow::setupWindow() {
 }
 
 void MainWindow::setupMenusAndToolbar() {
-    m_undoStack = new QUndoStack(this);
+    m_undoGroup = new QUndoGroup(this);
 
     QMenu* projectMenu = menuBar()->addMenu(QStringLiteral("Project"));
     QMenu* editMenu = menuBar()->addMenu(QStringLiteral("Edit"));
@@ -62,17 +66,31 @@ void MainWindow::setupMenusAndToolbar() {
     QMenu* runMenu = menuBar()->addMenu(QStringLiteral("Run"));
     menuBar()->addMenu(QStringLiteral("Help"));
 
-    QAction* saveAction =
-        projectMenu->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton), QStringLiteral("Save"));
+    QAction* newAction =
+        projectMenu->addAction(style()->standardIcon(QStyle::SP_FileIcon), QStringLiteral("New"));
+    newAction->setShortcut(QKeySequence::New);
+
     QAction* openAction =
         projectMenu->addAction(style()->standardIcon(QStyle::SP_DialogOpenButton), QStringLiteral("Open"));
+    openAction->setShortcut(QKeySequence::Open);
+
+    m_saveAction =
+        projectMenu->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton), QStringLiteral("Save"));
+    m_saveAction->setShortcut(QKeySequence::Save);
+
+    m_saveAsAction = projectMenu->addAction(QStringLiteral("Save As"));
+    m_saveAsAction->setShortcut(QKeySequence::SaveAs);
+
+    QAction* closeTabAction = projectMenu->addAction(QStringLiteral("Close Tab"));
+    closeTabAction->setShortcut(QKeySequence::Close);
+
     QAction* clearAction = projectMenu->addAction(QStringLiteral("Clear Graph"));
     projectMenu->addSeparator();
     projectMenu->addAction(QStringLiteral("Exit"), this, &QWidget::close);
 
-    QAction* undoAction = m_undoStack->createUndoAction(this, QStringLiteral("Undo"));
+    QAction* undoAction = m_undoGroup->createUndoAction(this, QStringLiteral("Undo"));
     undoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowBack));
-    QAction* redoAction = m_undoStack->createRedoAction(this, QStringLiteral("Redo"));
+    QAction* redoAction = m_undoGroup->createRedoAction(this, QStringLiteral("Redo"));
     redoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
     editMenu->addAction(undoAction);
     editMenu->addAction(redoAction);
@@ -86,8 +104,9 @@ void MainWindow::setupMenusAndToolbar() {
     QToolBar* toolBar = addToolBar(QStringLiteral("Main"));
     toolBar->setMovable(false);
     toolBar->setIconSize(QSize(20, 20));
+    toolBar->addAction(newAction);
     toolBar->addAction(openAction);
-    toolBar->addAction(saveAction);
+    toolBar->addAction(m_saveAction);
     toolBar->addSeparator();
     toolBar->addAction(undoAction);
     toolBar->addAction(redoAction);
@@ -96,52 +115,14 @@ void MainWindow::setupMenusAndToolbar() {
     toolBar->addSeparator();
     toolBar->addAction(style()->standardIcon(QStyle::SP_MediaPlay), QStringLiteral("Run"));
 
-    connect(clearAction, &QAction::triggered, this, [this]() {
-        if (!m_scene) {
-            return;
+    connect(newAction, &QAction::triggered, this, [this]() {
+        const int index = createEditorTab(QStringLiteral("Untitled-%1").arg(m_untitledCounter++));
+        if (index >= 0) {
+            m_editorTabs->setCurrentIndex(index);
         }
-        m_scene->clearGraph();
-        if (m_undoStack) {
-            m_undoStack->clear();
-        }
-        rebuildProjectTreeNodes();
-        statusBar()->showMessage(QStringLiteral("Graph cleared"), 2000);
-    });
-
-    connect(deleteAction, &QAction::triggered, this, [this]() {
-        if (m_scene) {
-            m_scene->deleteSelectionWithUndo();
-        }
-    });
-
-    connect(saveAction, &QAction::triggered, this, [this]() {
-        if (!m_scene) {
-            return;
-        }
-
-        QString path = m_currentFilePath;
-        if (path.isEmpty()) {
-            path = QFileDialog::getSaveFileName(
-                this, QStringLiteral("Save Graph"), QStringLiteral("graph.eda.json"), QStringLiteral("EDA Graph (*.json)"));
-        }
-        if (path.isEmpty()) {
-            return;
-        }
-
-        QString error;
-        const GraphDocument document = m_scene->toDocument();
-        if (!GraphSerializer::saveToFile(document, path, &error)) {
-            QMessageBox::critical(this, QStringLiteral("Save Failed"), error);
-            return;
-        }
-        m_currentFilePath = path;
-        statusBar()->showMessage(QStringLiteral("Saved: %1").arg(path), 2500);
     });
 
     connect(openAction, &QAction::triggered, this, [this]() {
-        if (!m_scene) {
-            return;
-        }
         const QString path = QFileDialog::getOpenFileName(
             this, QStringLiteral("Open Graph"), QString(), QStringLiteral("EDA Graph (*.json)"));
         if (path.isEmpty()) {
@@ -154,15 +135,54 @@ void MainWindow::setupMenusAndToolbar() {
             QMessageBox::critical(this, QStringLiteral("Open Failed"), error);
             return;
         }
-        if (!m_scene->fromDocument(document)) {
-            QMessageBox::critical(this, QStringLiteral("Open Failed"), QStringLiteral("Graph rebuild failed."));
+
+        const QString title = QFileInfo(path).fileName();
+        const int index = createEditorTab(title, &document, path);
+        if (index >= 0) {
+            m_editorTabs->setCurrentIndex(index);
+            statusBar()->showMessage(QStringLiteral("Opened: %1").arg(path), 2500);
+        }
+    });
+
+    connect(m_saveAction, &QAction::triggered, this, [this]() {
+        const int index = currentDocumentIndex();
+        if (index >= 0) {
+            saveDocument(index, false);
+        }
+    });
+
+    connect(m_saveAsAction, &QAction::triggered, this, [this]() {
+        const int index = currentDocumentIndex();
+        if (index >= 0) {
+            saveDocument(index, true);
+        }
+    });
+
+    connect(closeTabAction, &QAction::triggered, this, [this]() {
+        const int index = currentDocumentIndex();
+        if (index >= 0) {
+            closeDocumentTab(index);
+        }
+    });
+
+    connect(clearAction, &QAction::triggered, this, [this]() {
+        const int index = currentDocumentIndex();
+        if (index < 0 || !m_scene) {
             return;
         }
-        if (m_undoStack) {
-            m_undoStack->clear();
+        m_scene->clearGraph();
+        if (m_documents[index].undoStack) {
+            m_documents[index].undoStack->clear();
         }
-        m_currentFilePath = path;
-        statusBar()->showMessage(QStringLiteral("Opened: %1").arg(path), 2500);
+        setDocumentDirty(index, true);
+        rebuildProjectTreeNodes();
+        statusBar()->showMessage(QStringLiteral("Graph cleared"), 2000);
+    });
+
+    connect(deleteAction, &QAction::triggered, this, [this]() {
+        if (m_scene) {
+            m_scene->deleteSelectionWithUndo();
+        }
     });
 }
 
@@ -171,10 +191,13 @@ void MainWindow::setupCentralArea() {
     m_editorTabs->setDocumentMode(true);
     m_editorTabs->setTabsClosable(true);
     m_editorTabs->setMovable(true);
-    m_editorTabs->addTab(createEditorTab(QStringLiteral("RCP_SH1805")), QStringLiteral("RCP_SH1805"));
-    m_editorTabs->addTab(createEditorTab(QStringLiteral("RCP_SH1208")), QStringLiteral("RCP_SH1208"));
     setCentralWidget(m_editorTabs);
-    activateEditorTab(0);
+
+    const int index = createEditorTab(QStringLiteral("Untitled-%1").arg(m_untitledCounter++));
+    if (index >= 0) {
+        m_editorTabs->setCurrentIndex(index);
+        activateEditorTab(index);
+    }
 }
 
 void MainWindow::setupLeftDocks() {
@@ -237,47 +260,8 @@ void MainWindow::setupRightDock() {
 }
 
 void MainWindow::setupSignalBindings() {
-    for (int i = 0; i < m_views.size(); ++i) {
-        GraphView* view = m_views[i];
-        EditorScene* scene = m_scenes[i];
-
-        connect(view, &GraphView::paletteItemDropped, this, [this, scene](const QString& typeName, const QPointF& scenePos) {
-            NodeItem* node = scene->createNodeWithUndo(typeName, scenePos);
-            if (scene == m_scene && node) {
-                scene->clearSelection();
-                node->setSelected(true);
-                statusBar()->showMessage(QStringLiteral("Node created: %1").arg(typeName), 2000);
-            }
-        });
-
-        connect(view, &GraphView::zoomChanged, this, [this, view](int percent) {
-            if (view == m_graphView) {
-                statusBar()->showMessage(QStringLiteral("Zoom: %1%").arg(percent), 1500);
-            }
-        });
-
-        connect(scene,
-                &EditorScene::selectionInfoChanged,
-                this,
-                [this, scene](const QString& itemType,
-                              const QString& itemId,
-                              const QString& displayName,
-                              const QPointF& pos,
-                              int inputCount,
-                              int outputCount) {
-                    if (scene == m_scene) {
-                        updatePropertyTable(itemType, itemId, displayName, pos, inputCount, outputCount);
-                    }
-                });
-
-        connect(scene, &EditorScene::graphChanged, this, [this, scene]() {
-            if (scene == m_scene) {
-                rebuildProjectTreeNodes();
-            }
-        });
-    }
-
     connect(m_editorTabs, &QTabWidget::currentChanged, this, &MainWindow::activateEditorTab);
+    connect(m_editorTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeDocumentTab);
     connect(m_propertyTable, &QTableWidget::cellChanged, this, &MainWindow::onPropertyCellChanged);
 
     connect(m_projectTree, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem* item) {
@@ -303,6 +287,14 @@ void MainWindow::setupSignalBindings() {
 }
 
 void MainWindow::populateDemoGraph() {
+    const int index = currentDocumentIndex();
+    if (index < 0 || !m_scene) {
+        return;
+    }
+
+    DocumentContext& doc = m_documents[index];
+    doc.suppressDirtyTracking = true;
+
     auto addNode = [this](const QString& type, const QString& display, const QPointF& pos) -> NodeItem* {
         NodeItem* node = m_scene->createNode(type, pos);
         if (node) {
@@ -330,12 +322,33 @@ void MainWindow::populateDemoGraph() {
     if (n3 && n4) {
         m_scene->createEdge(n3->firstOutputPort(), n4->firstInputPort());
     }
+
+    doc.suppressDirtyTracking = false;
+    if (doc.undoStack) {
+        doc.undoStack->clear();
+    }
+    setDocumentDirty(index, false);
 }
 
-QWidget* MainWindow::createEditorTab(const QString&) {
+int MainWindow::createEditorTab(const QString& title, const GraphDocument* initialDocument, const QString& filePath) {
     EditorScene* scene = new EditorScene(this);
     scene->setSceneRect(0, 0, 3600, 2400);
-    scene->setUndoStack(m_undoStack);
+
+    QUndoStack* undoStack = new QUndoStack(this);
+    scene->setUndoStack(undoStack);
+    if (m_undoGroup) {
+        m_undoGroup->addStack(undoStack);
+    }
+
+    if (initialDocument && !scene->fromDocument(*initialDocument)) {
+        if (m_undoGroup) {
+            m_undoGroup->removeStack(undoStack);
+        }
+        delete undoStack;
+        delete scene;
+        QMessageBox::critical(this, QStringLiteral("Open Failed"), QStringLiteral("Graph rebuild failed."));
+        return -1;
+    }
 
     GraphView* view = new GraphView(this);
     view->setScene(scene);
@@ -352,24 +365,210 @@ QWidget* MainWindow::createEditorTab(const QString&) {
     layout->addWidget(rulerHint);
     layout->addWidget(view);
 
-    m_scenes.push_back(scene);
-    m_views.push_back(view);
-    return page;
+    const int index = m_documents.size();
+    m_documents.push_back(DocumentContext{scene, view, undoStack, title, filePath, false, false});
+    m_editorTabs->addTab(page, title);
+
+    connect(view, &GraphView::paletteItemDropped, this, [this, scene](const QString& typeName, const QPointF& scenePos) {
+        NodeItem* node = scene->createNodeWithUndo(typeName, scenePos);
+        if (scene == m_scene && node) {
+            scene->clearSelection();
+            node->setSelected(true);
+            statusBar()->showMessage(QStringLiteral("Node created: %1").arg(typeName), 2000);
+        }
+    });
+
+    connect(view, &GraphView::zoomChanged, this, [this, view](int percent) {
+        if (view == m_graphView) {
+            statusBar()->showMessage(QStringLiteral("Zoom: %1%").arg(percent), 1500);
+        }
+    });
+
+    connect(scene,
+            &EditorScene::selectionInfoChanged,
+            this,
+            [this, scene](const QString& itemType,
+                          const QString& itemId,
+                          const QString& displayName,
+                          const QPointF& pos,
+                          int inputCount,
+                          int outputCount) {
+                if (scene == m_scene) {
+                    updatePropertyTable(itemType, itemId, displayName, pos, inputCount, outputCount);
+                }
+            });
+
+    connect(scene, &EditorScene::graphChanged, this, [this, scene]() {
+        const int i = documentIndexForScene(scene);
+        if (i < 0) {
+            return;
+        }
+        if (!m_documents[i].suppressDirtyTracking) {
+            setDocumentDirty(i, true);
+        }
+        if (scene == m_scene) {
+            rebuildProjectTreeNodes();
+        }
+    });
+
+    return index;
 }
 
 void MainWindow::activateEditorTab(int index) {
-    if (index < 0 || index >= m_scenes.size()) {
+    if (index < 0 || index >= m_documents.size()) {
+        m_scene = nullptr;
+        m_graphView = nullptr;
+        if (m_undoGroup) {
+            m_undoGroup->setActiveStack(nullptr);
+        }
+        if (m_propertyTable) {
+            updatePropertyTable(QString(), QString(), QString(), QPointF(), 0, 0);
+        }
         return;
     }
-    m_scene = m_scenes[index];
-    m_graphView = m_views[index];
+
+    m_scene = m_documents[index].scene;
+    m_graphView = m_documents[index].view;
+    if (m_undoGroup) {
+        m_undoGroup->setActiveStack(m_documents[index].undoStack);
+    }
     if (m_graphNodesRoot) {
         rebuildProjectTreeNodes();
     }
     if (m_propertyTable) {
         updatePropertyTable(QString(), QString(), QString(), QPointF(), 0, 0);
     }
-    statusBar()->showMessage(QStringLiteral("Active tab: %1").arg(m_editorTabs->tabText(index)), 1200);
+    statusBar()->showMessage(QStringLiteral("Active tab: %1").arg(m_documents[index].title), 1200);
+}
+
+int MainWindow::documentIndexForScene(const EditorScene* scene) const {
+    if (!scene) {
+        return -1;
+    }
+    for (int i = 0; i < m_documents.size(); ++i) {
+        if (m_documents[i].scene == scene) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int MainWindow::currentDocumentIndex() const {
+    return m_editorTabs ? m_editorTabs->currentIndex() : -1;
+}
+
+bool MainWindow::saveDocument(int index, bool saveAs) {
+    if (index < 0 || index >= m_documents.size()) {
+        return false;
+    }
+
+    DocumentContext& doc = m_documents[index];
+    QString path = doc.filePath;
+    if (saveAs || path.isEmpty()) {
+        const QString suggested = path.isEmpty()
+            ? QStringLiteral("%1.eda.json").arg(doc.title.isEmpty() ? QStringLiteral("graph") : doc.title)
+            : path;
+        path = QFileDialog::getSaveFileName(
+            this, QStringLiteral("Save Graph"), suggested, QStringLiteral("EDA Graph (*.json)"));
+    }
+    if (path.isEmpty()) {
+        return false;
+    }
+
+    QString error;
+    const GraphDocument document = doc.scene->toDocument();
+    if (!GraphSerializer::saveToFile(document, path, &error)) {
+        QMessageBox::critical(this, QStringLiteral("Save Failed"), error);
+        return false;
+    }
+
+    doc.filePath = path;
+    doc.title = QFileInfo(path).fileName();
+    setDocumentDirty(index, false);
+    if (doc.undoStack) {
+        doc.undoStack->setClean();
+    }
+
+    statusBar()->showMessage(QStringLiteral("Saved: %1").arg(path), 2500);
+    return true;
+}
+
+bool MainWindow::maybeSaveDocument(int index) {
+    if (index < 0 || index >= m_documents.size()) {
+        return true;
+    }
+
+    const DocumentContext& doc = m_documents[index];
+    if (!doc.dirty) {
+        return true;
+    }
+
+    const QMessageBox::StandardButton choice = QMessageBox::warning(
+        this,
+        QStringLiteral("Unsaved Changes"),
+        QStringLiteral("Document \"%1\" has unsaved changes. Save before closing?").arg(doc.title),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
+        QMessageBox::Save);
+
+    if (choice == QMessageBox::Save) {
+        return saveDocument(index, false);
+    }
+    if (choice == QMessageBox::Discard) {
+        return true;
+    }
+    return false;
+}
+
+bool MainWindow::closeDocumentTab(int index) {
+    if (index < 0 || index >= m_documents.size()) {
+        return false;
+    }
+
+    if (!maybeSaveDocument(index)) {
+        return false;
+    }
+
+    const DocumentContext doc = m_documents[index];
+    QWidget* page = m_editorTabs->widget(index);
+    m_editorTabs->removeTab(index);
+    m_documents.removeAt(index);
+
+    if (m_undoGroup && doc.undoStack) {
+        m_undoGroup->removeStack(doc.undoStack);
+    }
+    delete doc.undoStack;
+    delete doc.scene;
+    delete page;
+
+    if (m_documents.isEmpty()) {
+        const int newIndex = createEditorTab(QStringLiteral("Untitled-%1").arg(m_untitledCounter++));
+        if (newIndex >= 0) {
+            m_editorTabs->setCurrentIndex(newIndex);
+        }
+    }
+
+    activateEditorTab(currentDocumentIndex());
+    return true;
+}
+
+void MainWindow::setDocumentDirty(int index, bool dirty) {
+    if (index < 0 || index >= m_documents.size()) {
+        return;
+    }
+    if (m_documents[index].dirty == dirty) {
+        return;
+    }
+    m_documents[index].dirty = dirty;
+    updateTabTitle(index);
+}
+
+void MainWindow::updateTabTitle(int index) {
+    if (!m_editorTabs || index < 0 || index >= m_documents.size()) {
+        return;
+    }
+    const DocumentContext& doc = m_documents[index];
+    const QString tabText = doc.dirty ? doc.title + QStringLiteral("*") : doc.title;
+    m_editorTabs->setTabText(index, tabText);
 }
 
 void MainWindow::addPaletteCategory(QToolBox* toolBox, const QString& title, const QStringList& names) {
@@ -614,4 +813,14 @@ QTreeWidgetItem* MainWindow::findTreeItemByNodeId(const QString& nodeId) const {
         }
     }
     return nullptr;
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    for (int i = m_documents.size() - 1; i >= 0; --i) {
+        if (!maybeSaveDocument(i)) {
+            event->ignore();
+            return;
+        }
+    }
+    event->accept();
 }
