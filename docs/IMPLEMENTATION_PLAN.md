@@ -201,13 +201,13 @@ Acceptance:
 - Legacy schema migration tests and component metadata registry integrated
 - Typed property editors added for bool/int/double/string properties
 - Source tree aligned to `src/app|model|scene|items|commands|panels`
+- Optional routing mode toggle added (`Manhattan` / `Avoid Nodes`)
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Extend optional obstacle-aware routing as post-MVP enhancement
-2. Add richer command granularity (separate move/rename/property command classes)
-3. Add multi-document file lifecycle (`New/Close/Save As` and dirty-state prompts)
-4. Add panel decomposition under `src/panels` for clearer ownership
+1. Add richer command granularity (separate move/rename/property command classes)
+2. Add multi-document file lifecycle (`New/Close/Save As` and dirty-state prompts)
+3. Add panel decomposition under `src/panels` for clearer ownership
 
 ## 8. Merge Quality Gates
 

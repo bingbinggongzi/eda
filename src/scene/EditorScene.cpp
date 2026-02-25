@@ -111,6 +111,7 @@ EdgeItem* EditorScene::createEdge(PortItem* outputPort, PortItem* inputPort) {
     }
 
     EdgeItem* edge = new EdgeItem(nextEdgeId(), outputPort);
+    edge->setRoutingMode(m_edgeRoutingMode);
     edge->setTargetPort(inputPort);
     addItem(edge);
     emit graphChanged();
@@ -293,6 +294,7 @@ EdgeItem* EditorScene::createEdgeFromData(const EdgeData& edgeData) {
     }
 
     EdgeItem* edge = new EdgeItem(edgeData.id, outPort);
+    edge->setRoutingMode(m_edgeRoutingMode);
     edge->setTargetPort(inPort);
     addItem(edge);
     updateCounterFromId(edgeData.id, &m_edgeCounter);
@@ -424,6 +426,22 @@ void EditorScene::setPlacementType(const QString& typeName) {
     m_placementType = typeName;
 }
 
+void EditorScene::setEdgeRoutingMode(EdgeRoutingMode mode) {
+    if (m_edgeRoutingMode == mode) {
+        return;
+    }
+    m_edgeRoutingMode = mode;
+    for (QGraphicsItem* item : items()) {
+        if (EdgeItem* edge = dynamic_cast<EdgeItem*>(item)) {
+            edge->setRoutingMode(mode);
+        }
+    }
+}
+
+EdgeRoutingMode EditorScene::edgeRoutingMode() const {
+    return m_edgeRoutingMode;
+}
+
 void EditorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
     if (event->button() == Qt::LeftButton && m_mode == InteractionMode::Place && !m_placementType.isEmpty()) {
         createNodeWithUndo(m_placementType, event->scenePos());
@@ -465,6 +483,7 @@ void EditorScene::onPortConnectionStart(PortItem* port) {
     }
 
     m_previewEdge = new EdgeItem(QStringLiteral("__preview__"), port);
+    m_previewEdge->setRoutingMode(m_edgeRoutingMode);
     addItem(m_previewEdge);
     emit connectionStateChanged(true);
 }

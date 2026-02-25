@@ -1,5 +1,6 @@
 #pragma once
 
+#include "items/EdgeItem.h"
 #include "model/GraphDocument.h"
 
 #include <QGraphicsScene>
@@ -7,7 +8,6 @@
 #include <QString>
 
 class QUndoStack;
-class EdgeItem;
 class NodeItem;
 class PortItem;
 
@@ -47,6 +47,8 @@ public:
     void setInteractionMode(InteractionMode mode);
     InteractionMode interactionMode() const;
     void setPlacementType(const QString& typeName);
+    void setEdgeRoutingMode(EdgeRoutingMode mode);
+    EdgeRoutingMode edgeRoutingMode() const;
 
 signals:
     void selectionInfoChanged(const QString& itemType,
@@ -96,4 +98,5 @@ private:
     QUndoStack* m_undoStack = nullptr;
     InteractionMode m_mode = InteractionMode::Select;
     QString m_placementType;
+    EdgeRoutingMode m_edgeRoutingMode = EdgeRoutingMode::Manhattan;
 };

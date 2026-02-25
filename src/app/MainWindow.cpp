@@ -197,7 +197,7 @@ void MainWindow::setupLeftDocks() {
     m_propertyDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     m_propertyDock->setMinimumHeight(220);
 
-    m_propertyTable = new QTableWidget(8, 2, m_propertyDock);
+    m_propertyTable = new QTableWidget(9, 2, m_propertyDock);
     m_propertyTable->setHorizontalHeaderLabels({QStringLiteral("Key"), QStringLiteral("Value")});
     m_propertyTable->horizontalHeader()->setStretchLastSection(true);
     m_propertyTable->verticalHeader()->setVisible(false);
@@ -406,7 +406,7 @@ void MainWindow::updatePropertyTable(const QString& itemType,
     NodeItem* selectedNode = (itemType == QStringLiteral("node")) ? findNodeById(itemId) : nullptr;
     const QVector<PropertyData> customProps = selectedNode ? selectedNode->properties() : QVector<PropertyData>();
 
-    const int baseRows = 8;
+    const int baseRows = 9;
     m_propertyTable->clearContents();
     m_propertyTable->setRowCount(baseRows + customProps.size());
 
@@ -443,6 +443,25 @@ void MainWindow::updatePropertyTable(const QString& itemType,
             return;
         }
         m_scene->setSnapToGrid(text == QStringLiteral("On"));
+    });
+
+    auto* routingKey = new QTableWidgetItem(QStringLiteral("Routing"));
+    routingKey->setFlags(routingKey->flags() & ~Qt::ItemIsEditable);
+    m_propertyTable->setItem(8, 0, routingKey);
+    auto* routingCombo = new QComboBox(m_propertyTable);
+    routingCombo->addItems({QStringLiteral("Manhattan"), QStringLiteral("Avoid Nodes")});
+    const QString routingText =
+        (m_scene && m_scene->edgeRoutingMode() == EdgeRoutingMode::ObstacleAvoiding) ? QStringLiteral("Avoid Nodes")
+                                                                                       : QStringLiteral("Manhattan");
+    routingCombo->setCurrentText(routingText);
+    m_propertyTable->setCellWidget(8, 1, routingCombo);
+    connect(routingCombo, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+        if (m_propertyTableUpdating || !m_scene) {
+            return;
+        }
+        const EdgeRoutingMode mode =
+            (text == QStringLiteral("Avoid Nodes")) ? EdgeRoutingMode::ObstacleAvoiding : EdgeRoutingMode::Manhattan;
+        m_scene->setEdgeRoutingMode(mode);
     });
 
     for (int i = 0; i < customProps.size(); ++i) {

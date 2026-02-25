@@ -52,6 +52,7 @@ private slots:
     void serializerUnsupportedSchema();
     void sceneRoundtrip();
     void undoRedoSmoke();
+    void obstacleRoutingToggle();
     void stressLargeGraphBuild();
 };
 
@@ -204,6 +205,31 @@ void EdaSuite::undoRedoSmoke() {
 
     undoStack.undo();
     QCOMPARE(countEdges(scene), 0);
+}
+
+void EdaSuite::obstacleRoutingToggle() {
+    EditorScene scene;
+    scene.setSnapToGrid(false);
+
+    NodeItem* left = scene.createNode(QStringLiteral("tm_Node"), QPointF(100.0, 140.0));
+    NodeItem* blocker = scene.createNode(QStringLiteral("tm_Node"), QPointF(320.0, 130.0));
+    NodeItem* right = scene.createNode(QStringLiteral("tm_Node"), QPointF(520.0, 140.0));
+    QVERIFY(left != nullptr);
+    QVERIFY(blocker != nullptr);
+    QVERIFY(right != nullptr);
+
+    EdgeItem* edge = scene.createEdge(left->firstOutputPort(), right->firstInputPort());
+    QVERIFY(edge != nullptr);
+
+    scene.setEdgeRoutingMode(EdgeRoutingMode::Manhattan);
+    QCOMPARE(edge->routingMode(), EdgeRoutingMode::Manhattan);
+    const QRectF manhattanBounds = edge->path().boundingRect();
+    QVERIFY(manhattanBounds.height() < 1.0);
+
+    scene.setEdgeRoutingMode(EdgeRoutingMode::ObstacleAvoiding);
+    QCOMPARE(edge->routingMode(), EdgeRoutingMode::ObstacleAvoiding);
+    const QRectF avoidBounds = edge->path().boundingRect();
+    QVERIFY(avoidBounds.height() > manhattanBounds.height() + 10.0);
 }
 
 void EdaSuite::stressLargeGraphBuild() {
