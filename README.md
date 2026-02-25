@@ -15,6 +15,7 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Component metadata-driven node creation (ports + defaults)
 - Typed property editing (bool/int/double/string)
 - Optional edge routing mode (`Manhattan` / `Avoid Nodes`)
+- Dedicated move/rename/property undo commands with merge support
 
 ## Requirements
 

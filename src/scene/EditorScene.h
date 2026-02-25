@@ -10,6 +10,9 @@
 class QUndoStack;
 class NodeItem;
 class PortItem;
+class NodeMoveCommand;
+class NodeRenameCommand;
+class NodePropertyCommand;
 
 enum class InteractionMode {
     Select,
@@ -72,11 +75,19 @@ private slots:
     void onNodeDragFinished(NodeItem* node, const QPointF& oldPos, const QPointF& newPos);
 
 private:
+    friend class NodeMoveCommand;
+    friend class NodeRenameCommand;
+    friend class NodePropertyCommand;
+
     QString nextNodeId();
     QString nextPortId();
     QString nextEdgeId();
     void updateCounterFromId(const QString& id, int* counter);
     QPointF snapPoint(const QPointF& p) const;
+    NodeItem* findNodeByIdInternal(const QString& nodeId) const;
+    bool applyNodeRenameInternal(const QString& nodeId, const QString& newName, bool emitGraphChanged);
+    bool applyNodePositionInternal(const QString& nodeId, const QPointF& newPos, bool emitGraphChanged);
+    bool applyNodePropertyInternal(const QString& nodeId, const QString& key, const QString& value, bool emitGraphChanged);
     bool canConnect(PortItem* a, PortItem* b) const;
     PortItem* pickPortAt(const QPointF& scenePos) const;
     void finishConnectionAt(const QPointF& scenePos, PortItem* explicitTarget = nullptr);

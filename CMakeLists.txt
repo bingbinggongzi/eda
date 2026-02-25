@@ -69,6 +69,8 @@ add_executable(eda_ui_prototype
     src/model/GraphSerializer.cpp
     src/commands/DocumentStateCommand.h
     src/commands/DocumentStateCommand.cpp
+    src/commands/NodeEditCommands.h
+    src/commands/NodeEditCommands.cpp
 )
 
 target_include_directories(eda_ui_prototype PRIVATE src)
@@ -96,6 +98,8 @@ if(BUILD_TESTING)
         src/items/EdgeItem.cpp
         src/commands/DocumentStateCommand.h
         src/commands/DocumentStateCommand.cpp
+        src/commands/NodeEditCommands.h
+        src/commands/NodeEditCommands.cpp
     )
 
     target_include_directories(eda_tests PRIVATE src)

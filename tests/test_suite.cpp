@@ -52,6 +52,7 @@ private slots:
     void serializerUnsupportedSchema();
     void sceneRoundtrip();
     void undoRedoSmoke();
+    void granularCommandMerge();
     void obstacleRoutingToggle();
     void stressLargeGraphBuild();
 };
@@ -205,6 +206,47 @@ void EdaSuite::undoRedoSmoke() {
 
     undoStack.undo();
     QCOMPARE(countEdges(scene), 0);
+}
+
+void EdaSuite::granularCommandMerge() {
+    EditorScene scene;
+    QUndoStack undoStack;
+    scene.setUndoStack(&undoStack);
+
+    NodeItem* node = scene.createNodeWithUndo(QStringLiteral("tm_Node"), QPointF(0.0, 0.0));
+    QVERIFY(node != nullptr);
+    const QString nodeId = node->nodeId();
+    QCOMPARE(undoStack.count(), 1);
+
+    QVERIFY(scene.moveNodeWithUndo(nodeId, QPointF(100.0, 100.0)));
+    QCOMPARE(undoStack.count(), 2);
+    QVERIFY(scene.moveNodeWithUndo(nodeId, QPointF(140.0, 100.0)));
+    QCOMPARE(undoStack.count(), 2);
+
+    QVERIFY(scene.renameNodeWithUndo(nodeId, QStringLiteral("Node_A")));
+    QCOMPARE(undoStack.count(), 3);
+    QVERIFY(scene.renameNodeWithUndo(nodeId, QStringLiteral("Node_B")));
+    QCOMPARE(undoStack.count(), 3);
+
+    QVERIFY(scene.setNodePropertyWithUndo(nodeId, QStringLiteral("pressure"), QStringLiteral("2.0")));
+    QCOMPARE(undoStack.count(), 4);
+    QVERIFY(scene.setNodePropertyWithUndo(nodeId, QStringLiteral("pressure"), QStringLiteral("3.0")));
+    QCOMPARE(undoStack.count(), 4);
+
+    undoStack.undo();
+    node = findNodeById(scene, nodeId);
+    QVERIFY(node != nullptr);
+    QCOMPARE(node->propertyValue(QStringLiteral("pressure")), QStringLiteral("1.0"));
+
+    undoStack.undo();
+    node = findNodeById(scene, nodeId);
+    QVERIFY(node != nullptr);
+    QCOMPARE(node->displayName(), QStringLiteral("tm_Node"));
+
+    undoStack.undo();
+    node = findNodeById(scene, nodeId);
+    QVERIFY(node != nullptr);
+    QCOMPARE(node->pos(), QPointF(0.0, 0.0));
 }
 
 void EdaSuite::obstacleRoutingToggle() {

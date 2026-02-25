@@ -1,6 +1,7 @@
 #include "EditorScene.h"
 
 #include "commands/DocumentStateCommand.h"
+#include "commands/NodeEditCommands.h"
 #include "items/EdgeItem.h"
 #include "items/NodeItem.h"
 #include "items/PortItem.h"
@@ -132,43 +133,24 @@ EdgeItem* EditorScene::createEdgeWithUndo(PortItem* outputPort, PortItem* inputP
 }
 
 bool EditorScene::renameNodeWithUndo(const QString& nodeId, const QString& newName) {
-    NodeItem* target = nullptr;
-    for (QGraphicsItem* item : items()) {
-        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
-            if (node->nodeId() == nodeId) {
-                target = node;
-                break;
-            }
-        }
-    }
+    NodeItem* target = findNodeByIdInternal(nodeId);
     if (!target || target->displayName() == newName) {
         return false;
     }
 
-    const GraphDocument before = toDocument();
-    target->setDisplayName(newName);
-    emit graphChanged();
-
-    if (!m_undoStack) {
-        return true;
+    const QString oldName = target->displayName();
+    if (!applyNodeRenameInternal(nodeId, newName, true)) {
+        return false;
     }
-    const GraphDocument after = toDocument();
-    if (!areDocumentsEquivalent(before, after)) {
-        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Rename Node"), true));
+
+    if (m_undoStack) {
+        m_undoStack->push(new NodeRenameCommand(this, nodeId, oldName, newName, true));
     }
     return true;
 }
 
 bool EditorScene::moveNodeWithUndo(const QString& nodeId, const QPointF& newPos) {
-    NodeItem* target = nullptr;
-    for (QGraphicsItem* item : items()) {
-        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
-            if (node->nodeId() == nodeId) {
-                target = node;
-                break;
-            }
-        }
-    }
+    NodeItem* target = findNodeByIdInternal(nodeId);
     if (!target) {
         return false;
     }
@@ -178,47 +160,34 @@ bool EditorScene::moveNodeWithUndo(const QString& nodeId, const QPointF& newPos)
         return false;
     }
 
-    const GraphDocument before = toDocument();
-    target->setPos(snapped);
-    emit graphChanged();
-
-    if (!m_undoStack) {
-        return true;
+    const QPointF oldPos = target->pos();
+    if (!applyNodePositionInternal(nodeId, snapped, true)) {
+        return false;
     }
-    const GraphDocument after = toDocument();
-    if (!areDocumentsEquivalent(before, after)) {
-        m_undoStack->push(new DocumentStateCommand(
-            this, before, after, QStringLiteral("Move Node"), true, QStringLiteral("move:%1").arg(nodeId)));
+
+    if (m_undoStack) {
+        m_undoStack->push(new NodeMoveCommand(this, nodeId, oldPos, snapped, true));
     }
     return true;
 }
 
 bool EditorScene::setNodePropertyWithUndo(const QString& nodeId, const QString& key, const QString& value) {
-    NodeItem* target = nullptr;
-    for (QGraphicsItem* item : items()) {
-        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
-            if (node->nodeId() == nodeId) {
-                target = node;
-                break;
-            }
-        }
-    }
+    NodeItem* target = findNodeByIdInternal(nodeId);
     if (!target) {
         return false;
     }
-    const GraphDocument before = toDocument();
-    if (!target->setPropertyValue(key, value)) {
+
+    const QString oldValue = target->propertyValue(key);
+    if (oldValue == value) {
         return false;
     }
-    emit graphChanged();
 
-    if (!m_undoStack) {
-        return true;
+    if (!applyNodePropertyInternal(nodeId, key, value, true)) {
+        return false;
     }
-    const GraphDocument after = toDocument();
-    if (!areDocumentsEquivalent(before, after)) {
-        m_undoStack->push(
-            new DocumentStateCommand(this, before, after, QStringLiteral("Edit Property"), true, QStringLiteral("prop:%1:%2").arg(nodeId, key)));
+
+    if (m_undoStack) {
+        m_undoStack->push(new NodePropertyCommand(this, nodeId, key, oldValue, value, true));
     }
     return true;
 }
@@ -526,22 +495,22 @@ void EditorScene::onSelectionChangedInternal() {
 }
 
 void EditorScene::onNodeDragFinished(NodeItem* node, const QPointF& oldPos, const QPointF& newPos) {
-    if (!node || !m_undoStack || oldPos == newPos) {
+    if (!node) {
+        return;
+    }
+    const QPointF snapped = snapPoint(newPos);
+    if (oldPos == snapped) {
         return;
     }
 
-    GraphDocument after = toDocument();
-    GraphDocument before = after;
-    for (NodeData& nodeData : before.nodes) {
-        if (nodeData.id == node->nodeId()) {
-            nodeData.position = oldPos;
-            break;
-        }
+    if (node->pos() != snapped) {
+        applyNodePositionInternal(node->nodeId(), snapped, true);
+    } else {
+        emit graphChanged();
     }
 
-    if (!areDocumentsEquivalent(before, after)) {
-        m_undoStack->push(new DocumentStateCommand(
-            this, before, after, QStringLiteral("Move Node"), true, QStringLiteral("move:%1").arg(node->nodeId())));
+    if (m_undoStack) {
+        m_undoStack->push(new NodeMoveCommand(this, node->nodeId(), oldPos, snapped, true));
     }
 }
 
@@ -571,6 +540,67 @@ void EditorScene::updateCounterFromId(const QString& id, int* counter) {
     if (ok) {
         *counter = std::max(*counter, index + 1);
     }
+}
+
+NodeItem* EditorScene::findNodeByIdInternal(const QString& nodeId) const {
+    if (nodeId.isEmpty()) {
+        return nullptr;
+    }
+    for (QGraphicsItem* item : items()) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            if (node->nodeId() == nodeId) {
+                return node;
+            }
+        }
+    }
+    return nullptr;
+}
+
+bool EditorScene::applyNodeRenameInternal(const QString& nodeId, const QString& newName, bool emitGraphChangedFlag) {
+    NodeItem* target = findNodeByIdInternal(nodeId);
+    if (!target || target->displayName() == newName) {
+        return false;
+    }
+    target->setDisplayName(newName);
+    if (emitGraphChangedFlag) {
+        emit graphChanged();
+    }
+    if (target->isSelected()) {
+        onSelectionChangedInternal();
+    }
+    return true;
+}
+
+bool EditorScene::applyNodePositionInternal(const QString& nodeId, const QPointF& newPos, bool emitGraphChangedFlag) {
+    NodeItem* target = findNodeByIdInternal(nodeId);
+    if (!target || target->pos() == newPos) {
+        return false;
+    }
+    target->setPos(newPos);
+    if (emitGraphChangedFlag) {
+        emit graphChanged();
+    }
+    if (target->isSelected()) {
+        onSelectionChangedInternal();
+    }
+    return true;
+}
+
+bool EditorScene::applyNodePropertyInternal(const QString& nodeId,
+                                            const QString& key,
+                                            const QString& value,
+                                            bool emitGraphChangedFlag) {
+    NodeItem* target = findNodeByIdInternal(nodeId);
+    if (!target || !target->setPropertyValue(key, value)) {
+        return false;
+    }
+    if (emitGraphChangedFlag) {
+        emit graphChanged();
+    }
+    if (target->isSelected()) {
+        onSelectionChangedInternal();
+    }
+    return true;
 }
 
 QPointF EditorScene::snapPoint(const QPointF& p) const {
