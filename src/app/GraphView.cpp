@@ -8,12 +8,16 @@
 #include <QDragEnterEvent>
 #include <QDragLeaveEvent>
 #include <QDragMoveEvent>
+#include <QDataStream>
 #include <QDropEvent>
+#include <QIODevice>
+#include <QMap>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QScrollBar>
 #include <QtGlobal>
+#include <QVariant>
 #include <QWheelEvent>
 
 namespace {
@@ -21,6 +25,44 @@ QSizeF previewSizeForType(const QString& typeName) {
     const ComponentCatalog& catalog = ComponentCatalog::instance();
     const ComponentSpec* spec = catalog.find(typeName);
     return spec ? spec->size : catalog.fallback().size;
+}
+
+QString extractTypeNameFromMime(const QMimeData* mimeData) {
+    if (!mimeData) {
+        return QString();
+    }
+
+    if (mimeData->hasText()) {
+        const QString text = mimeData->text().trimmed();
+        if (!text.isEmpty()) {
+            return text;
+        }
+    }
+
+    static const QString kModelMime = QStringLiteral("application/x-qabstractitemmodeldatalist");
+    if (!mimeData->hasFormat(kModelMime)) {
+        return QString();
+    }
+
+    const QByteArray encoded = mimeData->data(kModelMime);
+    QDataStream stream(encoded);
+    while (!stream.atEnd()) {
+        int row = -1;
+        int column = -1;
+        QMap<int, QVariant> roleDataMap;
+        stream >> row >> column >> roleDataMap;
+
+        const QString userRoleValue = roleDataMap.value(Qt::UserRole).toString().trimmed();
+        if (!userRoleValue.isEmpty()) {
+            return userRoleValue;
+        }
+
+        const QString displayRoleValue = roleDataMap.value(Qt::DisplayRole).toString().trimmed();
+        if (!displayRoleValue.isEmpty()) {
+            return displayRoleValue;
+        }
+    }
+    return QString();
 }
 }  // namespace
 
@@ -176,21 +218,19 @@ void GraphView::applyZoom(qreal factor, const QPoint& anchorPos) {
 }
 
 void GraphView::dragEnterEvent(QDragEnterEvent* event) {
-    if (event->mimeData()->hasText()) {
+    const QString typeName = extractTypeNameFromMime(event->mimeData());
+    if (!typeName.isEmpty()) {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         const QPoint viewPos = event->position().toPoint();
 #else
         const QPoint viewPos = event->pos();
 #endif
-        const QString typeName = event->mimeData()->text().trimmed();
-        if (!typeName.isEmpty()) {
-            m_dropPreviewActive = true;
-            m_dropPreviewType = typeName;
-            m_dropPreviewPos = mapToScene(viewPos);
-            viewport()->update();
-            event->acceptProposedAction();
-            return;
-        }
+        m_dropPreviewActive = true;
+        m_dropPreviewType = typeName;
+        m_dropPreviewPos = mapToScene(viewPos);
+        viewport()->update();
+        event->acceptProposedAction();
+        return;
     }
     QGraphicsView::dragEnterEvent(event);
 }
@@ -203,42 +243,38 @@ void GraphView::dragLeaveEvent(QDragLeaveEvent* event) {
 }
 
 void GraphView::dragMoveEvent(QDragMoveEvent* event) {
-    if (event->mimeData()->hasText()) {
+    const QString typeName = extractTypeNameFromMime(event->mimeData());
+    if (!typeName.isEmpty()) {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         const QPoint viewPos = event->position().toPoint();
 #else
         const QPoint viewPos = event->pos();
 #endif
-        const QString typeName = event->mimeData()->text().trimmed();
-        if (!typeName.isEmpty()) {
-            m_dropPreviewActive = true;
-            m_dropPreviewType = typeName;
-            m_dropPreviewPos = mapToScene(viewPos);
-            viewport()->update();
-            event->acceptProposedAction();
-            return;
-        }
+        m_dropPreviewActive = true;
+        m_dropPreviewType = typeName;
+        m_dropPreviewPos = mapToScene(viewPos);
+        viewport()->update();
+        event->acceptProposedAction();
+        return;
     }
     QGraphicsView::dragMoveEvent(event);
 }
 
 void GraphView::dropEvent(QDropEvent* event) {
-    if (event->mimeData()->hasText()) {
-        const QString typeName = event->mimeData()->text().trimmed();
-        if (!typeName.isEmpty()) {
+    const QString typeName = extractTypeNameFromMime(event->mimeData());
+    if (!typeName.isEmpty()) {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-            const QPoint viewPos = event->position().toPoint();
+        const QPoint viewPos = event->position().toPoint();
 #else
-            const QPoint viewPos = event->pos();
+        const QPoint viewPos = event->pos();
 #endif
-            m_dropPreviewPos = mapToScene(viewPos);
-            emit paletteItemDropped(typeName, effectiveDropPreviewPos());
-            m_dropPreviewActive = false;
-            m_dropPreviewType.clear();
-            viewport()->update();
-            event->acceptProposedAction();
-            return;
-        }
+        m_dropPreviewPos = mapToScene(viewPos);
+        emit paletteItemDropped(typeName, effectiveDropPreviewPos());
+        m_dropPreviewActive = false;
+        m_dropPreviewType.clear();
+        viewport()->update();
+        event->acceptProposedAction();
+        return;
     }
     m_dropPreviewActive = false;
     m_dropPreviewType.clear();
