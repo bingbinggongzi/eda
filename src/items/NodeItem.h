@@ -23,6 +23,7 @@ public:
     const QString& nodeId() const;
     const QString& typeName() const;
     const QString& displayName() const;
+    const QSizeF& nodeSize() const;
     void setDisplayName(const QString& name);
 
     PortItem* addPort(const QString& portId, const QString& name, PortDirection direction);

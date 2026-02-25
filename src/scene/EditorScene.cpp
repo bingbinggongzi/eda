@@ -4,10 +4,12 @@
 #include "../items/NodeItem.h"
 #include "../items/PortItem.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
+#include <QRegularExpression>
 
 EditorScene::EditorScene(QObject* parent)
     : QGraphicsScene(parent) {
@@ -19,20 +21,24 @@ NodeItem* EditorScene::createNode(const QString& typeName, const QPointF& sceneP
     if (!node) {
         return nullptr;
     }
-
     node->setPos(snapPoint(scenePos));
     addItem(node);
-
-    for (PortItem* p : node->inputPorts()) {
-        connect(p, &PortItem::connectionStart, this, &EditorScene::onPortConnectionStart);
-        connect(p, &PortItem::connectionRelease, this, &EditorScene::onPortConnectionRelease);
-    }
-    for (PortItem* p : node->outputPorts()) {
-        connect(p, &PortItem::connectionStart, this, &EditorScene::onPortConnectionStart);
-        connect(p, &PortItem::connectionRelease, this, &EditorScene::onPortConnectionRelease);
-    }
-
     emit graphChanged();
+    return node;
+}
+
+NodeItem* EditorScene::createNodeFromData(const NodeData& nodeData) {
+    NodeItem* node = buildNode(nodeData.id, nodeData.type, nodeData.name, nodeData.size, nodeData.ports);
+    if (!node) {
+        return nullptr;
+    }
+    node->setPos(nodeData.position);
+    addItem(node);
+
+    updateCounterFromId(nodeData.id, &m_nodeCounter);
+    for (const PortData& port : nodeData.ports) {
+        updateCounterFromId(port.id, &m_portCounter);
+    }
     return node;
 }
 
@@ -46,6 +52,113 @@ EdgeItem* EditorScene::createEdge(PortItem* outputPort, PortItem* inputPort) {
     addItem(edge);
     emit graphChanged();
     return edge;
+}
+
+EdgeItem* EditorScene::createEdgeFromData(const EdgeData& edgeData) {
+    PortItem* outPort = nullptr;
+    PortItem* inPort = nullptr;
+
+    for (QGraphicsItem* item : items()) {
+        PortItem* port = dynamic_cast<PortItem*>(item);
+        if (!port) {
+            continue;
+        }
+        if (port->portId() == edgeData.fromPortId) {
+            outPort = port;
+        } else if (port->portId() == edgeData.toPortId) {
+            inPort = port;
+        }
+    }
+
+    if (!outPort || !inPort) {
+        return nullptr;
+    }
+
+    EdgeItem* edge = new EdgeItem(edgeData.id, outPort);
+    edge->setTargetPort(inPort);
+    addItem(edge);
+    updateCounterFromId(edgeData.id, &m_edgeCounter);
+    return edge;
+}
+
+void EditorScene::clearGraph() {
+    if (m_previewEdge) {
+        removeItem(m_previewEdge);
+        delete m_previewEdge;
+        m_previewEdge = nullptr;
+    }
+    m_pendingPort = nullptr;
+
+    clear();
+    m_nodeCounter = 1;
+    m_portCounter = 1;
+    m_edgeCounter = 1;
+    emit graphChanged();
+}
+
+GraphDocument EditorScene::toDocument() const {
+    GraphDocument doc;
+    doc.schemaVersion = 1;
+
+    for (QGraphicsItem* item : items()) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            NodeData nodeData;
+            nodeData.id = node->nodeId();
+            nodeData.type = node->typeName();
+            nodeData.name = node->displayName();
+            nodeData.position = node->scenePos();
+            nodeData.size = node->nodeSize();
+
+            for (PortItem* port : node->inputPorts()) {
+                PortData p;
+                p.id = port->portId();
+                p.name = port->portName();
+                p.direction = QStringLiteral("input");
+                nodeData.ports.append(p);
+            }
+            for (PortItem* port : node->outputPorts()) {
+                PortData p;
+                p.id = port->portId();
+                p.name = port->portName();
+                p.direction = QStringLiteral("output");
+                nodeData.ports.append(p);
+            }
+            doc.nodes.append(nodeData);
+        }
+    }
+
+    for (QGraphicsItem* item : items()) {
+        if (EdgeItem* edge = dynamic_cast<EdgeItem*>(item)) {
+            if (!edge->sourcePort() || !edge->targetPort()) {
+                continue;
+            }
+            EdgeData e;
+            e.id = edge->edgeId();
+            e.fromNodeId = edge->sourcePort()->ownerNode() ? edge->sourcePort()->ownerNode()->nodeId() : QString();
+            e.fromPortId = edge->sourcePort()->portId();
+            e.toNodeId = edge->targetPort()->ownerNode() ? edge->targetPort()->ownerNode()->nodeId() : QString();
+            e.toPortId = edge->targetPort()->portId();
+            doc.edges.append(e);
+        }
+    }
+
+    return doc;
+}
+
+bool EditorScene::fromDocument(const GraphDocument& document) {
+    clearGraph();
+
+    for (const NodeData& node : document.nodes) {
+        if (!createNodeFromData(node)) {
+            return false;
+        }
+    }
+    for (const EdgeData& edge : document.edges) {
+        createEdgeFromData(edge);
+    }
+
+    emit graphChanged();
+    return true;
 }
 
 void EditorScene::setSnapToGrid(bool enabled) {
@@ -142,6 +255,22 @@ QString EditorScene::nextEdgeId() {
     return QStringLiteral("E_%1").arg(m_edgeCounter++);
 }
 
+void EditorScene::updateCounterFromId(const QString& id, int* counter) {
+    if (!counter) {
+        return;
+    }
+    const QRegularExpression re(QStringLiteral("^[A-Z]_(\\d+)$"));
+    const QRegularExpressionMatch match = re.match(id);
+    if (!match.hasMatch()) {
+        return;
+    }
+    bool ok = false;
+    const int index = match.captured(1).toInt(&ok);
+    if (ok) {
+        *counter = std::max(*counter, index + 1);
+    }
+}
+
 QPointF EditorScene::snapPoint(const QPointF& p) const {
     if (!m_snapToGrid) {
         return p;
@@ -195,8 +324,8 @@ void EditorScene::finishConnectionAt(const QPointF& scenePos, PortItem* explicit
 NodeItem* EditorScene::buildNodeByType(const QString& typeName) {
     const QString id = nextNodeId();
     const QString display = typeName.isEmpty() ? QStringLiteral("Node") : typeName;
-    NodeItem* node = new NodeItem(id, typeName, display, QSizeF(120.0, 72.0));
 
+    QVector<PortData> ports;
     const QString lower = typeName.toLower();
     int inCount = 1;
     int outCount = 1;
@@ -212,11 +341,27 @@ NodeItem* EditorScene::buildNodeByType(const QString& typeName) {
     }
 
     for (int i = 0; i < inCount; ++i) {
-        node->addPort(nextPortId(), QStringLiteral("in%1").arg(i + 1), PortDirection::Input);
+        ports.push_back(PortData{nextPortId(), QStringLiteral("in%1").arg(i + 1), QStringLiteral("input")});
     }
     for (int i = 0; i < outCount; ++i) {
-        node->addPort(nextPortId(), QStringLiteral("out%1").arg(i + 1), PortDirection::Output);
+        ports.push_back(PortData{nextPortId(), QStringLiteral("out%1").arg(i + 1), QStringLiteral("output")});
     }
+    return buildNode(id, typeName, display, QSizeF(120.0, 72.0), ports);
+}
 
+NodeItem* EditorScene::buildNode(const QString& nodeId,
+                                 const QString& typeName,
+                                 const QString& displayName,
+                                 const QSizeF& size,
+                                 const QVector<PortData>& ports) {
+    NodeItem* node = new NodeItem(nodeId, typeName, displayName, size);
+    for (const PortData& port : ports) {
+        const PortDirection dir =
+            port.direction.compare(QStringLiteral("output"), Qt::CaseInsensitive) == 0 ? PortDirection::Output
+                                                                                         : PortDirection::Input;
+        PortItem* p = node->addPort(port.id, port.name, dir);
+        connect(p, &PortItem::connectionStart, this, &EditorScene::onPortConnectionStart);
+        connect(p, &PortItem::connectionRelease, this, &EditorScene::onPortConnectionRelease);
+    }
     return node;
 }

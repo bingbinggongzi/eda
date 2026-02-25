@@ -2,6 +2,7 @@
 
 #include <QMainWindow>
 #include <QPointF>
+#include <QString>
 
 class EditorScene;
 class GraphView;
@@ -48,4 +49,5 @@ private:
     QDockWidget* m_paletteDock = nullptr;
 
     QTreeWidgetItem* m_graphNodesRoot = nullptr;
+    QString m_currentFilePath;
 };

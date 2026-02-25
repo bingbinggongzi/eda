@@ -3,9 +3,11 @@
 #include "GraphView.h"
 #include "items/EdgeItem.h"
 #include "items/NodeItem.h"
+#include "model/GraphSerializer.h"
 #include "scene/EditorScene.h"
 
 #include <QDockWidget>
+#include <QFileDialog>
 #include <QGraphicsScene>
 #include <QGraphicsSimpleTextItem>
 #include <QHeaderView>
@@ -22,6 +24,7 @@
 #include <QToolBox>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+#include <QMessageBox>
 
 #include <algorithm>
 
@@ -81,9 +84,57 @@ void MainWindow::setupMenusAndToolbar() {
         if (!m_scene) {
             return;
         }
-        m_scene->clear();
+        m_scene->clearGraph();
         rebuildProjectTreeNodes();
         statusBar()->showMessage(QStringLiteral("Graph cleared"), 2000);
+    });
+
+    connect(saveAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+
+        QString path = m_currentFilePath;
+        if (path.isEmpty()) {
+            path = QFileDialog::getSaveFileName(
+                this, QStringLiteral("Save Graph"), QStringLiteral("graph.eda.json"), QStringLiteral("EDA Graph (*.json)"));
+        }
+        if (path.isEmpty()) {
+            return;
+        }
+
+        QString error;
+        const GraphDocument document = m_scene->toDocument();
+        if (!GraphSerializer::saveToFile(document, path, &error)) {
+            QMessageBox::critical(this, QStringLiteral("Save Failed"), error);
+            return;
+        }
+        m_currentFilePath = path;
+        statusBar()->showMessage(QStringLiteral("Saved: %1").arg(path), 2500);
+    });
+
+    connect(openAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        const QString path = QFileDialog::getOpenFileName(
+            this, QStringLiteral("Open Graph"), QString(), QStringLiteral("EDA Graph (*.json)"));
+        if (path.isEmpty()) {
+            return;
+        }
+
+        GraphDocument document;
+        QString error;
+        if (!GraphSerializer::loadFromFile(&document, path, &error)) {
+            QMessageBox::critical(this, QStringLiteral("Open Failed"), error);
+            return;
+        }
+        if (!m_scene->fromDocument(document)) {
+            QMessageBox::critical(this, QStringLiteral("Open Failed"), QStringLiteral("Graph rebuild failed."));
+            return;
+        }
+        m_currentFilePath = path;
+        statusBar()->showMessage(QStringLiteral("Opened: %1").arg(path), 2500);
     });
 }
 

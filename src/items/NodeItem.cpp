@@ -58,6 +58,10 @@ const QString& NodeItem::displayName() const {
     return m_displayName;
 }
 
+const QSizeF& NodeItem::nodeSize() const {
+    return m_size;
+}
+
 void NodeItem::setDisplayName(const QString& name) {
     if (m_displayName == name) {
         return;

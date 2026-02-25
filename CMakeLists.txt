@@ -62,6 +62,9 @@ add_executable(eda_ui_prototype
     src/items/PortItem.cpp
     src/items/EdgeItem.h
     src/items/EdgeItem.cpp
+    src/model/GraphDocument.h
+    src/model/GraphSerializer.h
+    src/model/GraphSerializer.cpp
 )
 
 target_link_libraries(eda_ui_prototype PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
