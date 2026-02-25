@@ -377,6 +377,14 @@ int MainWindow::createEditorTab(const QString& title, const GraphDocument* initi
         }
     });
 
+    connect(undoStack, &QUndoStack::cleanChanged, this, [this, undoStack](bool clean) {
+        const int i = documentIndexForUndoStack(undoStack);
+        if (i < 0 || m_documents[i].suppressDirtyTracking) {
+            return;
+        }
+        setDocumentDirty(i, !clean);
+    });
+
     return index;
 }
 
@@ -413,6 +421,18 @@ int MainWindow::documentIndexForScene(const EditorScene* scene) const {
     }
     for (int i = 0; i < m_documents.size(); ++i) {
         if (m_documents[i].scene == scene) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int MainWindow::documentIndexForUndoStack(const QUndoStack* stack) const {
+    if (!stack) {
+        return -1;
+    }
+    for (int i = 0; i < m_documents.size(); ++i) {
+        if (m_documents[i].undoStack == stack) {
             return i;
         }
     }
@@ -496,8 +516,8 @@ bool MainWindow::closeDocumentTab(int index) {
 
     const DocumentContext doc = m_documents[index];
     QWidget* page = m_editorTabs->widget(index);
-    m_editorTabs->removeTab(index);
     m_documents.removeAt(index);
+    m_editorTabs->removeTab(index);
 
     if (m_undoGroup && doc.undoStack) {
         m_undoGroup->removeStack(doc.undoStack);

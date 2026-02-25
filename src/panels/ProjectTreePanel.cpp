@@ -38,7 +38,10 @@ ProjectTreePanel::ProjectTreePanel(QWidget* parent)
 }
 
 void ProjectTreePanel::rebuildFromScene(EditorScene* scene) {
-    m_graphNodesRoot->takeChildren();
+    const QList<QTreeWidgetItem*> oldChildren = m_graphNodesRoot->takeChildren();
+    for (QTreeWidgetItem* child : oldChildren) {
+        delete child;
+    }
     if (!scene) {
         return;
     }

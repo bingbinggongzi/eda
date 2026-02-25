@@ -50,6 +50,7 @@ private:
     int createEditorTab(const QString& title, const GraphDocument* initialDocument = nullptr, const QString& filePath = QString());
     void activateEditorTab(int index);
     int documentIndexForScene(const EditorScene* scene) const;
+    int documentIndexForUndoStack(const QUndoStack* stack) const;
     int currentDocumentIndex() const;
     bool saveDocument(int index, bool saveAs);
     bool maybeSaveDocument(int index);
