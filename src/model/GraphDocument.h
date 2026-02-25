@@ -11,6 +11,12 @@ struct PortData {
     QString direction;  // "input" or "output"
 };
 
+struct PropertyData {
+    QString key;
+    QString type;   // "string" | "int" | "double" | "bool"
+    QString value;
+};
+
 struct NodeData {
     QString id;
     QString type;
@@ -18,6 +24,7 @@ struct NodeData {
     QPointF position;
     QSizeF size;
     QVector<PortData> ports;
+    QVector<PropertyData> properties;
 };
 
 struct EdgeData {

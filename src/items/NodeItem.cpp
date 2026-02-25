@@ -98,6 +98,45 @@ PortItem* NodeItem::firstOutputPort() const {
     return m_outputPorts.isEmpty() ? nullptr : m_outputPorts.first();
 }
 
+const QVector<PropertyData>& NodeItem::properties() const {
+    return m_properties;
+}
+
+void NodeItem::setProperties(const QVector<PropertyData>& properties) {
+    m_properties = properties;
+}
+
+QString NodeItem::propertyValue(const QString& key) const {
+    for (const PropertyData& p : m_properties) {
+        if (p.key == key) {
+            return p.value;
+        }
+    }
+    return QString();
+}
+
+QString NodeItem::propertyType(const QString& key) const {
+    for (const PropertyData& p : m_properties) {
+        if (p.key == key) {
+            return p.type;
+        }
+    }
+    return QStringLiteral("string");
+}
+
+bool NodeItem::setPropertyValue(const QString& key, const QString& value) {
+    for (PropertyData& p : m_properties) {
+        if (p.key == key) {
+            if (p.value == value) {
+                return false;
+            }
+            p.value = value;
+            return true;
+        }
+    }
+    return false;
+}
+
 QVariant NodeItem::itemChange(GraphicsItemChange change, const QVariant& value) {
     if (change == QGraphicsItem::ItemPositionHasChanged) {
         for (PortItem* port : m_inputPorts) {

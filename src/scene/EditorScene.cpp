@@ -4,6 +4,7 @@
 #include "../items/NodeItem.h"
 #include "../items/PortItem.h"
 #include "../commands/DocumentStateCommand.h"
+#include "../model/ComponentCatalog.h"
 
 #include <algorithm>
 #include <cmath>
@@ -25,11 +26,17 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
     };
     auto sameNode = [&](const NodeData& n1, const NodeData& n2) {
         if (n1.id != n2.id || n1.type != n2.type || n1.name != n2.name || n1.position != n2.position || n1.size != n2.size ||
-            n1.ports.size() != n2.ports.size()) {
+            n1.ports.size() != n2.ports.size() || n1.properties.size() != n2.properties.size()) {
             return false;
         }
         for (int i = 0; i < n1.ports.size(); ++i) {
             if (!samePort(n1.ports[i], n2.ports[i])) {
+                return false;
+            }
+        }
+        for (int i = 0; i < n1.properties.size(); ++i) {
+            if (n1.properties[i].key != n2.properties[i].key || n1.properties[i].type != n2.properties[i].type ||
+                n1.properties[i].value != n2.properties[i].value) {
                 return false;
             }
         }
@@ -84,7 +91,7 @@ NodeItem* EditorScene::createNodeWithUndo(const QString& typeName, const QPointF
 }
 
 NodeItem* EditorScene::createNodeFromData(const NodeData& nodeData) {
-    NodeItem* node = buildNode(nodeData.id, nodeData.type, nodeData.name, nodeData.size, nodeData.ports);
+    NodeItem* node = buildNode(nodeData.id, nodeData.type, nodeData.name, nodeData.size, nodeData.ports, nodeData.properties);
     if (!node) {
         return nullptr;
     }
@@ -181,6 +188,36 @@ bool EditorScene::moveNodeWithUndo(const QString& nodeId, const QPointF& newPos)
     if (!areDocumentsEquivalent(before, after)) {
         m_undoStack->push(new DocumentStateCommand(
             this, before, after, QStringLiteral("Move Node"), true, QStringLiteral("move:%1").arg(nodeId)));
+    }
+    return true;
+}
+
+bool EditorScene::setNodePropertyWithUndo(const QString& nodeId, const QString& key, const QString& value) {
+    NodeItem* target = nullptr;
+    for (QGraphicsItem* item : items()) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            if (node->nodeId() == nodeId) {
+                target = node;
+                break;
+            }
+        }
+    }
+    if (!target) {
+        return false;
+    }
+    const GraphDocument before = toDocument();
+    if (!target->setPropertyValue(key, value)) {
+        return false;
+    }
+    emit graphChanged();
+
+    if (!m_undoStack) {
+        return true;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(
+            new DocumentStateCommand(this, before, after, QStringLiteral("Edit Property"), true, QStringLiteral("prop:%1:%2").arg(nodeId, key)));
     }
     return true;
 }
@@ -304,6 +341,7 @@ GraphDocument EditorScene::toDocument() const {
                 p.direction = QStringLiteral("output");
                 nodeData.ports.append(p);
             }
+            nodeData.properties = node->properties();
             doc.nodes.append(nodeData);
         }
     }
@@ -327,6 +365,9 @@ GraphDocument EditorScene::toDocument() const {
     std::sort(doc.edges.begin(), doc.edges.end(), [](const EdgeData& a, const EdgeData& b) { return a.id < b.id; });
     for (NodeData& node : doc.nodes) {
         std::sort(node.ports.begin(), node.ports.end(), [](const PortData& a, const PortData& b) { return a.id < b.id; });
+        std::sort(node.properties.begin(),
+                  node.properties.end(),
+                  [](const PropertyData& a, const PropertyData& b) { return a.key < b.key; });
     }
 
     return doc;
@@ -568,23 +609,16 @@ void EditorScene::finishConnectionAt(const QPointF& scenePos, PortItem* explicit
 }
 
 NodeItem* EditorScene::buildNodeByType(const QString& typeName) {
+    const ComponentCatalog& catalog = ComponentCatalog::instance();
+    const ComponentSpec* spec = catalog.find(typeName);
+    const ComponentSpec& resolved = spec ? *spec : catalog.fallback();
+
     const QString id = nextNodeId();
-    const QString display = typeName.isEmpty() ? QStringLiteral("Node") : typeName;
+    const QString display = resolved.displayName;
 
     QVector<PortData> ports;
-    const QString lower = typeName.toLower();
-    int inCount = 1;
-    int outCount = 1;
-    if (lower.contains(QStringLiteral("voter"))) {
-        inCount = 3;
-        outCount = 1;
-    } else if (lower.contains(QStringLiteral("sum"))) {
-        inCount = 2;
-        outCount = 1;
-    } else if (lower.contains(QStringLiteral("sft"))) {
-        inCount = 2;
-        outCount = 1;
-    }
+    const int inCount = std::max(1, resolved.inputCount);
+    const int outCount = std::max(1, resolved.outputCount);
 
     for (int i = 0; i < inCount; ++i) {
         ports.push_back(PortData{nextPortId(), QStringLiteral("in%1").arg(i + 1), QStringLiteral("input")});
@@ -592,15 +626,17 @@ NodeItem* EditorScene::buildNodeByType(const QString& typeName) {
     for (int i = 0; i < outCount; ++i) {
         ports.push_back(PortData{nextPortId(), QStringLiteral("out%1").arg(i + 1), QStringLiteral("output")});
     }
-    return buildNode(id, typeName, display, QSizeF(120.0, 72.0), ports);
+    return buildNode(id, resolved.typeName, display, resolved.size, ports, resolved.defaultProperties);
 }
 
 NodeItem* EditorScene::buildNode(const QString& nodeId,
                                  const QString& typeName,
                                  const QString& displayName,
                                  const QSizeF& size,
-                                 const QVector<PortData>& ports) {
+                                 const QVector<PortData>& ports,
+                                 const QVector<PropertyData>& properties) {
     NodeItem* node = new NodeItem(nodeId, typeName, displayName, size);
+    node->setProperties(properties);
     connect(node, &NodeItem::nodeDragFinished, this, &EditorScene::onNodeDragFinished);
     for (const PortData& port : ports) {
         const PortDirection dir =

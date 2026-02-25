@@ -1,6 +1,9 @@
 #pragma once
 
+#include "model/GraphDocument.h"
+
 #include <QMainWindow>
+#include <QHash>
 #include <QPointF>
 #include <QString>
 #include <QVector>
@@ -15,6 +18,7 @@ class QTabWidget;
 class QTreeWidget;
 class QTreeWidgetItem;
 class QUndoStack;
+class NodeItem;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -42,6 +46,7 @@ private:
     void rebuildProjectTreeNodes();
     void onPropertyCellChanged(int row, int column);
     QTreeWidgetItem* findTreeItemByNodeId(const QString& nodeId) const;
+    NodeItem* findNodeById(const QString& nodeId) const;
 
     QMenu* m_viewMenu = nullptr;
     QTabWidget* m_editorTabs = nullptr;
@@ -59,6 +64,8 @@ private:
     QUndoStack* m_undoStack = nullptr;
     QString m_selectedItemType;
     QString m_selectedItemId;
+    QHash<int, PropertyData> m_dynamicPropertyRows;
+    bool m_propertyTableUpdating = false;
     QVector<EditorScene*> m_scenes;
     QVector<GraphView*> m_views;
 };

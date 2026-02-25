@@ -197,14 +197,17 @@ Acceptance:
 - Test target `eda_tests` and smoke checklist added
 - Multi-tab editor context switching implemented with per-tab scene/view state
 - Performance notes and stress harness added (`docs/PERFORMANCE.md`, `scripts/stress.ps1`)
+- CI workflow added (`.github/workflows/ci.yml`)
+- Legacy schema migration tests and component metadata registry integrated
+- Typed property editors added for bool/int/double/string properties
 
 ## 7. Current Execution Queue (Next Up)
 
 1. Split source tree into `app/model/scene/items/commands/panels` folders for long-term maintainability
-2. Add schema migration tests for future document versions
-3. Add CI workflow for build + test on push/PR
-4. Add richer component metadata and typed property editing widgets
-5. Add optional obstacle-aware routing as post-MVP enhancement
+2. Add optional obstacle-aware routing as post-MVP enhancement
+3. Add richer command granularity (separate move/rename/property command classes)
+4. Add multi-document file lifecycle (`New/Close/Save As` and dirty-state prompts)
+5. Add panel decomposition under `src/panels` for clearer ownership
 
 ## 8. Merge Quality Gates
 

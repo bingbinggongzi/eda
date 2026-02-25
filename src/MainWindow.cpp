@@ -3,10 +3,13 @@
 #include "GraphView.h"
 #include "items/EdgeItem.h"
 #include "items/NodeItem.h"
+#include "model/ComponentCatalog.h"
 #include "model/GraphSerializer.h"
 #include "scene/EditorScene.h"
 
 #include <QDockWidget>
+#include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QGraphicsScene>
 #include <QGraphicsSimpleTextItem>
@@ -17,6 +20,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QSignalBlocker>
+#include <QSpinBox>
 #include <QStatusBar>
 #include <QStyle>
 #include <QTableWidget>
@@ -220,30 +224,11 @@ void MainWindow::setupRightDock() {
     layout->setSpacing(4);
 
     QToolBox* toolBox = new QToolBox(panel);
-    addPaletteCategory(toolBox,
-                       QStringLiteral("Actuator"),
-                       {QStringLiteral("tm_CheckVlv"),
-                        QStringLiteral("tm_AirWater"),
-                        QStringLiteral("tm_Bound"),
-                        QStringLiteral("tm_Node")});
-    addPaletteCategory(toolBox,
-                       QStringLiteral("Sensor"),
-                       {QStringLiteral("tm_TubeHte"),
-                        QStringLiteral("tm_HeatExChS"),
-                        QStringLiteral("tm_HeatExCh"),
-                        QStringLiteral("tm_Vessel")});
-    addPaletteCategory(toolBox,
-                       QStringLiteral("Control"),
-                       {QStringLiteral("Voter"),
-                        QStringLiteral("SFT"),
-                        QStringLiteral("Sum"),
-                        QStringLiteral("tm_Bearing")});
-    addPaletteCategory(toolBox,
-                       QStringLiteral("Electric"),
-                       {QStringLiteral("tm_Load"),
-                        QStringLiteral("tm_HeatSide"),
-                        QStringLiteral("tm_Valve"),
-                        QStringLiteral("tm_Pump")});
+    const ComponentCatalog& catalog = ComponentCatalog::instance();
+    const QStringList categories = catalog.categories();
+    for (const QString& category : categories) {
+        addPaletteCategory(toolBox, category, catalog.typesInCategory(category));
+    }
 
     layout->addWidget(toolBox);
     m_paletteDock->setWidget(panel);
@@ -412,22 +397,30 @@ void MainWindow::updatePropertyTable(const QString& itemType,
                                      const QPointF& pos,
                                      int inputCount,
                                      int outputCount) {
+    m_propertyTableUpdating = true;
     const QSignalBlocker blocker(m_propertyTable);
+    m_selectedItemType = itemType;
+    m_selectedItemId = itemId;
+    m_dynamicPropertyRows.clear();
+
+    NodeItem* selectedNode = (itemType == QStringLiteral("node")) ? findNodeById(itemId) : nullptr;
+    const QVector<PropertyData> customProps = selectedNode ? selectedNode->properties() : QVector<PropertyData>();
+
+    const int baseRows = 8;
+    m_propertyTable->clearContents();
+    m_propertyTable->setRowCount(baseRows + customProps.size());
+
     auto setRow = [this](int row, const QString& key, const QString& val, bool editable) {
         auto* keyItem = new QTableWidgetItem(key);
         keyItem->setFlags(keyItem->flags() & ~Qt::ItemIsEditable);
+        m_propertyTable->setItem(row, 0, keyItem);
 
         auto* valueItem = new QTableWidgetItem(val);
         if (!editable) {
             valueItem->setFlags(valueItem->flags() & ~Qt::ItemIsEditable);
         }
-
-        m_propertyTable->setItem(row, 0, keyItem);
         m_propertyTable->setItem(row, 1, valueItem);
     };
-
-    m_selectedItemType = itemType;
-    m_selectedItemId = itemId;
 
     const bool nodeEditable = (itemType == QStringLiteral("node"));
     setRow(0, QStringLiteral("Selection"), itemType.isEmpty() ? QStringLiteral("(none)") : itemType, false);
@@ -437,7 +430,72 @@ void MainWindow::updatePropertyTable(const QString& itemType,
     setRow(4, QStringLiteral("Y"), QString::number(pos.y(), 'f', 1), nodeEditable);
     setRow(5, QStringLiteral("Inputs"), QString::number(inputCount), false);
     setRow(6, QStringLiteral("Outputs"), QString::number(outputCount), false);
-    setRow(7, QStringLiteral("Grid Snap"), m_scene && m_scene->snapToGrid() ? QStringLiteral("On") : QStringLiteral("Off"), true);
+
+    auto* gridKey = new QTableWidgetItem(QStringLiteral("Grid Snap"));
+    gridKey->setFlags(gridKey->flags() & ~Qt::ItemIsEditable);
+    m_propertyTable->setItem(7, 0, gridKey);
+    auto* gridCombo = new QComboBox(m_propertyTable);
+    gridCombo->addItems({QStringLiteral("On"), QStringLiteral("Off")});
+    gridCombo->setCurrentText(m_scene && m_scene->snapToGrid() ? QStringLiteral("On") : QStringLiteral("Off"));
+    m_propertyTable->setCellWidget(7, 1, gridCombo);
+    connect(gridCombo, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+        if (m_propertyTableUpdating || !m_scene) {
+            return;
+        }
+        m_scene->setSnapToGrid(text == QStringLiteral("On"));
+    });
+
+    for (int i = 0; i < customProps.size(); ++i) {
+        const int row = baseRows + i;
+        const PropertyData& prop = customProps[i];
+        m_dynamicPropertyRows.insert(row, prop);
+
+        auto* keyItem = new QTableWidgetItem(prop.key);
+        keyItem->setFlags(keyItem->flags() & ~Qt::ItemIsEditable);
+        m_propertyTable->setItem(row, 0, keyItem);
+
+        if (prop.type == QStringLiteral("bool")) {
+            auto* combo = new QComboBox(m_propertyTable);
+            combo->addItems({QStringLiteral("true"), QStringLiteral("false")});
+            combo->setCurrentText(prop.value.toLower() == QStringLiteral("false") ? QStringLiteral("false") : QStringLiteral("true"));
+            m_propertyTable->setCellWidget(row, 1, combo);
+            connect(combo, &QComboBox::currentTextChanged, this, [this, row](const QString& text) {
+                if (m_propertyTableUpdating || !m_scene || m_selectedItemType != QStringLiteral("node")) {
+                    return;
+                }
+                const PropertyData prop = m_dynamicPropertyRows.value(row);
+                m_scene->setNodePropertyWithUndo(m_selectedItemId, prop.key, text);
+            });
+        } else if (prop.type == QStringLiteral("int")) {
+            auto* spin = new QSpinBox(m_propertyTable);
+            spin->setRange(-1000000, 1000000);
+            spin->setValue(prop.value.toInt());
+            m_propertyTable->setCellWidget(row, 1, spin);
+            connect(spin, qOverload<int>(&QSpinBox::valueChanged), this, [this, row](int v) {
+                if (m_propertyTableUpdating || !m_scene || m_selectedItemType != QStringLiteral("node")) {
+                    return;
+                }
+                const PropertyData prop = m_dynamicPropertyRows.value(row);
+                m_scene->setNodePropertyWithUndo(m_selectedItemId, prop.key, QString::number(v));
+            });
+        } else if (prop.type == QStringLiteral("double")) {
+            auto* spin = new QDoubleSpinBox(m_propertyTable);
+            spin->setDecimals(4);
+            spin->setRange(-1.0e9, 1.0e9);
+            spin->setValue(prop.value.toDouble());
+            m_propertyTable->setCellWidget(row, 1, spin);
+            connect(spin, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this, row](double v) {
+                if (m_propertyTableUpdating || !m_scene || m_selectedItemType != QStringLiteral("node")) {
+                    return;
+                }
+                const PropertyData prop = m_dynamicPropertyRows.value(row);
+                m_scene->setNodePropertyWithUndo(m_selectedItemId, prop.key, QString::number(v, 'f', 4));
+            });
+        } else {
+            auto* item = new QTableWidgetItem(prop.value);
+            m_propertyTable->setItem(row, 1, item);
+        }
+    }
 
     if (itemType == QStringLiteral("node")) {
         if (QTreeWidgetItem* item = findTreeItemByNodeId(itemId)) {
@@ -445,6 +503,7 @@ void MainWindow::updatePropertyTable(const QString& itemType,
             m_projectTree->setCurrentItem(item);
         }
     }
+    m_propertyTableUpdating = false;
 }
 
 void MainWindow::rebuildProjectTreeNodes() {
@@ -472,32 +531,26 @@ void MainWindow::rebuildProjectTreeNodes() {
 }
 
 void MainWindow::onPropertyCellChanged(int row, int column) {
-    if (!m_scene || column != 1) {
+    if (!m_scene || column != 1 || m_propertyTableUpdating) {
         return;
     }
     QTableWidgetItem* valueItem = m_propertyTable->item(row, column);
+    if (m_selectedItemType != QStringLiteral("node") || m_selectedItemId.isEmpty()) {
+        return;
+    }
+
+    if (m_dynamicPropertyRows.contains(row)) {
+        const PropertyData prop = m_dynamicPropertyRows.value(row);
+        if (prop.type == QStringLiteral("string") && valueItem) {
+            m_scene->setNodePropertyWithUndo(m_selectedItemId, prop.key, valueItem->text().trimmed());
+        }
+        return;
+    }
+
     if (!valueItem) {
         return;
     }
     const QString value = valueItem->text().trimmed();
-
-    if (row == 7) {
-        const QString v = value.toLower();
-        const bool on = (v == QStringLiteral("on") || v == QStringLiteral("true") || v == QStringLiteral("1") ||
-                         v == QStringLiteral("yes"));
-        m_scene->setSnapToGrid(on);
-        updatePropertyTable(m_selectedItemType,
-                            m_selectedItemId,
-                            m_propertyTable->item(2, 1) ? m_propertyTable->item(2, 1)->text() : QString(),
-                            QPointF(m_propertyTable->item(3, 1)->text().toDouble(), m_propertyTable->item(4, 1)->text().toDouble()),
-                            m_propertyTable->item(5, 1)->text().toInt(),
-                            m_propertyTable->item(6, 1)->text().toInt());
-        return;
-    }
-
-    if (m_selectedItemType != QStringLiteral("node") || m_selectedItemId.isEmpty()) {
-        return;
-    }
 
     if (row == 2) {
         if (m_scene->renameNodeWithUndo(m_selectedItemId, value)) {
@@ -515,6 +568,20 @@ void MainWindow::onPropertyCellChanged(int row, int column) {
             m_scene->moveNodeWithUndo(m_selectedItemId, QPointF(x, y));
         }
     }
+}
+
+NodeItem* MainWindow::findNodeById(const QString& nodeId) const {
+    if (!m_scene || nodeId.isEmpty()) {
+        return nullptr;
+    }
+    for (QGraphicsItem* item : m_scene->items()) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            if (node->nodeId() == nodeId) {
+                return node;
+            }
+        }
+    }
+    return nullptr;
 }
 
 QTreeWidgetItem* MainWindow::findTreeItemByNodeId(const QString& nodeId) const {

@@ -31,6 +31,7 @@ public:
     void deleteSelectionWithUndo();
     bool renameNodeWithUndo(const QString& nodeId, const QString& newName);
     bool moveNodeWithUndo(const QString& nodeId, const QPointF& newPos);
+    bool setNodePropertyWithUndo(const QString& nodeId, const QString& key, const QString& value);
 
     NodeItem* createNodeFromData(const NodeData& nodeData);
     EdgeItem* createEdgeFromData(const EdgeData& edgeData);
@@ -82,7 +83,8 @@ private:
                         const QString& typeName,
                         const QString& displayName,
                         const QSizeF& size,
-                        const QVector<PortData>& ports);
+                        const QVector<PortData>& ports,
+                        const QVector<PropertyData>& properties);
 
     int m_nodeCounter = 1;
     int m_portCounter = 1;

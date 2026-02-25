@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../model/GraphDocument.h"
 #include "PortItem.h"
 
 #include <QGraphicsObject>
@@ -35,6 +36,12 @@ public:
     PortItem* firstInputPort() const;
     PortItem* firstOutputPort() const;
 
+    const QVector<PropertyData>& properties() const;
+    void setProperties(const QVector<PropertyData>& properties);
+    QString propertyValue(const QString& key) const;
+    QString propertyType(const QString& key) const;
+    bool setPropertyValue(const QString& key, const QString& value);
+
 signals:
     void nodeMoved(NodeItem* node);
     void nodeDragFinished(NodeItem* node, const QPointF& oldPos, const QPointF& newPos);
@@ -53,5 +60,6 @@ private:
     QSizeF m_size;
     QVector<PortItem*> m_inputPorts;
     QVector<PortItem*> m_outputPorts;
+    QVector<PropertyData> m_properties;
     QPointF m_dragStartPos;
 };

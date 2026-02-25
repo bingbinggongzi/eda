@@ -63,6 +63,8 @@ add_executable(eda_ui_prototype
     src/items/EdgeItem.h
     src/items/EdgeItem.cpp
     src/model/GraphDocument.h
+    src/model/ComponentCatalog.h
+    src/model/ComponentCatalog.cpp
     src/model/GraphSerializer.h
     src/model/GraphSerializer.cpp
     src/commands/DocumentStateCommand.h
@@ -79,6 +81,8 @@ if(BUILD_TESTING)
     add_executable(eda_tests
         tests/test_suite.cpp
         src/model/GraphDocument.h
+        src/model/ComponentCatalog.h
+        src/model/ComponentCatalog.cpp
         src/model/GraphSerializer.h
         src/model/GraphSerializer.cpp
         src/scene/EditorScene.h

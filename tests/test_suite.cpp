@@ -64,14 +64,16 @@ void EdaSuite::serializerRoundtrip() {
                                  QPointF(120.0, 200.0),
                                  QSizeF(120.0, 72.0),
                                  {PortData{QStringLiteral("P_1"), QStringLiteral("in1"), QStringLiteral("input")},
-                                  PortData{QStringLiteral("P_2"), QStringLiteral("out1"), QStringLiteral("output")}}});
+                                  PortData{QStringLiteral("P_2"), QStringLiteral("out1"), QStringLiteral("output")}},
+                                 {PropertyData{QStringLiteral("vote_required"), QStringLiteral("int"), QStringLiteral("2")}}});
     src.nodes.push_back(NodeData{QStringLiteral("N_2"),
                                  QStringLiteral("Sum"),
                                  QStringLiteral("SumA"),
                                  QPointF(300.0, 220.0),
                                  QSizeF(120.0, 72.0),
                                  {PortData{QStringLiteral("P_3"), QStringLiteral("in1"), QStringLiteral("input")},
-                                  PortData{QStringLiteral("P_4"), QStringLiteral("out1"), QStringLiteral("output")}}});
+                                  PortData{QStringLiteral("P_4"), QStringLiteral("out1"), QStringLiteral("output")}},
+                                 {PropertyData{QStringLiteral("bias"), QStringLiteral("double"), QStringLiteral("0.0")}}});
     src.edges.push_back(EdgeData{QStringLiteral("E_1"),
                                  QStringLiteral("N_1"),
                                  QStringLiteral("P_2"),
@@ -94,6 +96,8 @@ void EdaSuite::serializerRoundtrip() {
     QCOMPARE(dst.nodes.size(), src.nodes.size());
     QCOMPARE(dst.edges.size(), src.edges.size());
     QCOMPARE(dst.nodes[0].id, src.nodes[0].id);
+    QCOMPARE(dst.nodes[0].properties.size(), src.nodes[0].properties.size());
+    QCOMPARE(dst.nodes[0].properties[0].key, src.nodes[0].properties[0].key);
     QCOMPARE(dst.edges[0].fromPortId, src.edges[0].fromPortId);
 }
 

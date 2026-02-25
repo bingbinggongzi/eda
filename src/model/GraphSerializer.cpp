@@ -30,6 +30,16 @@ QJsonObject toJson(const NodeData& node) {
         ports.append(toJson(p));
     }
     o[QStringLiteral("ports")] = ports;
+
+    QJsonArray properties;
+    for (const PropertyData& prop : node.properties) {
+        QJsonObject p;
+        p[QStringLiteral("key")] = prop.key;
+        p[QStringLiteral("type")] = prop.type;
+        p[QStringLiteral("value")] = prop.value;
+        properties.append(p);
+    }
+    o[QStringLiteral("properties")] = properties;
     return o;
 }
 
@@ -64,6 +74,7 @@ bool fromJson(const QJsonObject& o, NodeData* out) {
     out->position = QPointF(o.value(QStringLiteral("x")).toDouble(), o.value(QStringLiteral("y")).toDouble());
     out->size = QSizeF(o.value(QStringLiteral("w")).toDouble(120.0), o.value(QStringLiteral("h")).toDouble(72.0));
     out->ports.clear();
+    out->properties.clear();
 
     const QJsonArray ports = o.value(QStringLiteral("ports")).toArray();
     for (const QJsonValue& value : ports) {
@@ -71,6 +82,18 @@ bool fromJson(const QJsonObject& o, NodeData* out) {
         if (fromJson(value.toObject(), &port)) {
             out->ports.append(port);
         }
+    }
+
+    const QJsonArray properties = o.value(QStringLiteral("properties")).toArray();
+    for (const QJsonValue& value : properties) {
+        const QJsonObject p = value.toObject();
+        const QString key = p.value(QStringLiteral("key")).toString();
+        if (key.isEmpty()) {
+            continue;
+        }
+        const QString type = p.value(QStringLiteral("type")).toString(QStringLiteral("string"));
+        const QString val = p.value(QStringLiteral("value")).toString();
+        out->properties.push_back(PropertyData{key, type, val});
     }
     return !out->id.isEmpty();
 }

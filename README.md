@@ -12,6 +12,8 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Port-to-port edge creation with live preview
 - JSON save/load
 - Undo/redo for add/move/connect/delete
+- Component metadata-driven node creation (ports + defaults)
+- Typed property editing (bool/int/double/string)
 
 ## Requirements
 
