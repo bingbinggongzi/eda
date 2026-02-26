@@ -16,6 +16,7 @@
 
 namespace {
 constexpr qreal kAnchorOffset = 24.0;
+constexpr qreal kBundleSpacing = 18.0;
 constexpr qreal kGridStep = 20.0;
 constexpr qreal kObstaclePadding = 14.0;
 constexpr int kMaxVisitedCells = 80000;
@@ -64,6 +65,54 @@ bool almostEqual(qreal a, qreal b) {
 
 bool samePoint(const QPointF& a, const QPointF& b) {
     return almostEqual(a.x(), b.x()) && almostEqual(a.y(), b.y());
+}
+
+qreal parallelBundleOffset(const EdgeItem* edge) {
+    if (!edge || !edge->scene() || !edge->sourcePort() || !edge->targetPort()) {
+        return 0.0;
+    }
+
+    const NodeItem* sourceNode = edge->sourcePort()->ownerNode();
+    const NodeItem* targetNode = edge->targetPort()->ownerNode();
+    if (!sourceNode || !targetNode) {
+        return 0.0;
+    }
+
+    QVector<const EdgeItem*> siblings;
+    const QList<QGraphicsItem*> sceneItems = edge->scene()->items();
+    siblings.reserve(sceneItems.size());
+
+    for (QGraphicsItem* item : sceneItems) {
+        const EdgeItem* other = dynamic_cast<const EdgeItem*>(item);
+        if (!other || !other->sourcePort() || !other->targetPort()) {
+            continue;
+        }
+        const NodeItem* otherSource = other->sourcePort()->ownerNode();
+        const NodeItem* otherTarget = other->targetPort()->ownerNode();
+        if (!otherSource || !otherTarget) {
+            continue;
+        }
+        if (otherSource->nodeId() == sourceNode->nodeId() && otherTarget->nodeId() == targetNode->nodeId()) {
+            siblings.push_back(other);
+        }
+    }
+
+    if (siblings.size() < 2) {
+        return 0.0;
+    }
+
+    std::sort(siblings.begin(), siblings.end(), [](const EdgeItem* a, const EdgeItem* b) { return a->edgeId() < b->edgeId(); });
+
+    int index = 0;
+    for (int i = 0; i < siblings.size(); ++i) {
+        if (siblings[i] == edge) {
+            index = i;
+            break;
+        }
+    }
+
+    const qreal centeredIndex = static_cast<qreal>(index) - (static_cast<qreal>(siblings.size() - 1) * 0.5);
+    return centeredIndex * kBundleSpacing;
 }
 
 void appendLineTo(QPainterPath* path, const QPointF& point) {
@@ -322,11 +371,15 @@ QVector<QPointF> findObstacleRoute(const QPointF& startAnchor,
     return {};
 }
 
-QPainterPath buildManhattanPath(const QPointF& start, const QPointF& end, const QPointF& startAnchor, const QPointF& endAnchor) {
+QPainterPath buildManhattanPath(const QPointF& start,
+                                const QPointF& end,
+                                const QPointF& startAnchor,
+                                const QPointF& endAnchor,
+                                qreal bundleOffset) {
     QPainterPath path(start);
     appendLineTo(&path, startAnchor);
 
-    const qreal midX = (startAnchor.x() + endAnchor.x()) * 0.5;
+    const qreal midX = ((startAnchor.x() + endAnchor.x()) * 0.5) + bundleOffset;
     appendLineTo(&path, QPointF(midX, startAnchor.y()));
     appendLineTo(&path, QPointF(midX, endAnchor.y()));
 
@@ -341,7 +394,8 @@ QPainterPath buildObstaclePath(const QPointF& start,
                               const QPointF& endAnchor,
                               QGraphicsScene* scene,
                               const NodeItem* sourceNode,
-                              const NodeItem* targetNode) {
+                              const NodeItem* targetNode,
+                              qreal bundleOffset) {
     auto preferredExitDirection = [](qreal offset) {
         if (std::abs(offset) < 0.1) {
             return RouteDir::None;
@@ -357,16 +411,19 @@ QPainterPath buildObstaclePath(const QPointF& start,
 
     QPainterPath path(start);
     appendLineTo(&path, startAnchor);
+    const QPointF routedStartAnchor(startAnchor.x() + bundleOffset, startAnchor.y());
+    const QPointF routedEndAnchor(endAnchor.x() + bundleOffset, endAnchor.y());
+    appendLineTo(&path, routedStartAnchor);
 
-    const QVector<QPointF> route = findObstacleRoute(startAnchor,
-                                                     endAnchor,
+    const QVector<QPointF> route = findObstacleRoute(routedStartAnchor,
+                                                     routedEndAnchor,
                                                      scene,
                                                      sourceNode,
                                                      targetNode,
                                                      preferredExitDirection(startAnchor.x() - start.x()),
                                                      preferredArrivalDirection(endAnchor.x() - end.x()));
     if (route.isEmpty()) {
-        const qreal midX = (startAnchor.x() + endAnchor.x()) * 0.5;
+        const qreal midX = ((startAnchor.x() + endAnchor.x()) * 0.5) + bundleOffset;
         appendLineTo(&path, QPointF(midX, startAnchor.y()));
         appendLineTo(&path, QPointF(midX, endAnchor.y()));
     } else {
@@ -382,6 +439,7 @@ QPainterPath buildObstaclePath(const QPointF& start,
         appendLineTo(&path, QPointF(routedEnd.x(), endAnchor.y()));
     }
 
+    appendLineTo(&path, routedEndAnchor);
     appendLineTo(&path, endAnchor);
     appendLineTo(&path, end);
     return path;
@@ -480,12 +538,13 @@ void EdgeItem::updatePath() {
 
     const QPointF startAnchor(start.x() + startAnchorOffset(m_sourcePort), start.y());
     const QPointF endAnchor(end.x() + endAnchorOffset(m_sourcePort, m_targetPort, start, end), end.y());
+    const qreal bundleOffset = m_targetPort ? parallelBundleOffset(this) : 0.0;
 
     QPainterPath path;
     if (m_routingMode == EdgeRoutingMode::ObstacleAvoiding) {
-        path = buildObstaclePath(start, end, startAnchor, endAnchor, scene(), sourceNode, targetNode);
+        path = buildObstaclePath(start, end, startAnchor, endAnchor, scene(), sourceNode, targetNode, bundleOffset);
     } else {
-        path = buildManhattanPath(start, end, startAnchor, endAnchor);
+        path = buildManhattanPath(start, end, startAnchor, endAnchor, bundleOffset);
     }
     setPath(path);
 

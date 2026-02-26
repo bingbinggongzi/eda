@@ -247,6 +247,7 @@ private slots:
     void groupUngroupUndo();
     void obstacleRoutingToggle();
     void obstacleRoutingDirectionalBias();
+    void parallelEdgeBundleSpread();
     void toolboxMimeDropAccepted();
     void fileLifecycleNewSaveAsClose();
     void fileLifecycleOpenAndDirtyPrompt();
@@ -840,6 +841,42 @@ void EdaSuite::obstacleRoutingDirectionalBias() {
 
     const int turns = pathTurnCount(points);
     QVERIFY(turns <= 6);
+}
+
+void EdaSuite::parallelEdgeBundleSpread() {
+    EditorScene scene;
+    scene.setSnapToGrid(false);
+    scene.setEdgeRoutingMode(EdgeRoutingMode::Manhattan);
+
+    NodeItem* source = scene.createNode(QStringLiteral("tm_Node"), QPointF(120.0, 220.0));
+    NodeItem* target = scene.createNode(QStringLiteral("Voter"), QPointF(620.0, 180.0));
+    QVERIFY(source != nullptr);
+    QVERIFY(target != nullptr);
+    QVERIFY(source->firstOutputPort() != nullptr);
+    QVERIFY(target->inputPorts().size() >= 3);
+
+    QVector<EdgeItem*> edges;
+    for (int i = 0; i < 3; ++i) {
+        EdgeItem* edge = scene.createEdge(source->firstOutputPort(), target->inputPorts()[i]);
+        QVERIFY(edge != nullptr);
+        edges.push_back(edge);
+    }
+
+    QVector<qreal> trunkXs;
+    trunkXs.reserve(edges.size());
+    QSet<int> uniqueTrunkXs;
+    for (EdgeItem* edge : edges) {
+        const QVector<QPointF> points = pathPolyline(edge->path());
+        QVERIFY(points.size() >= 4);
+        const qreal trunkX = points[2].x();
+        trunkXs.push_back(trunkX);
+        uniqueTrunkXs.insert(qRound(trunkX));
+    }
+
+    QCOMPARE(uniqueTrunkXs.size(), 3);
+    std::sort(trunkXs.begin(), trunkXs.end());
+    QVERIFY(std::abs(trunkXs[1] - trunkXs[0]) >= 10.0);
+    QVERIFY(std::abs(trunkXs[2] - trunkXs[1]) >= 10.0);
 }
 
 void EdaSuite::toolboxMimeDropAccepted() {

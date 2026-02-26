@@ -136,6 +136,25 @@ EdgeItem* EditorScene::createEdge(PortItem* outputPort, PortItem* inputPort) {
     edge->setRoutingMode(m_edgeRoutingMode);
     edge->setTargetPort(inputPort);
     addItem(edge);
+    const NodeItem* sourceNode = outputPort->ownerNode();
+    const NodeItem* targetNode = inputPort->ownerNode();
+    if (sourceNode && targetNode) {
+        for (QGraphicsItem* item : items()) {
+            if (EdgeItem* existing = dynamic_cast<EdgeItem*>(item)) {
+                if (!existing->sourcePort() || !existing->targetPort()) {
+                    continue;
+                }
+                const NodeItem* existingSource = existing->sourcePort()->ownerNode();
+                const NodeItem* existingTarget = existing->targetPort()->ownerNode();
+                if (!existingSource || !existingTarget) {
+                    continue;
+                }
+                if (existingSource->nodeId() == sourceNode->nodeId() && existingTarget->nodeId() == targetNode->nodeId()) {
+                    existing->updatePath();
+                }
+            }
+        }
+    }
     emit graphChanged();
     return edge;
 }
@@ -570,6 +589,11 @@ void EditorScene::deleteSelectionWithUndo() {
         removeItem(item);
         delete item;
     }
+    for (QGraphicsItem* item : items()) {
+        if (EdgeItem* existing = dynamic_cast<EdgeItem*>(item)) {
+            existing->updatePath();
+        }
+    }
 
     rebuildNodeGroups();
 
@@ -608,6 +632,25 @@ EdgeItem* EditorScene::createEdgeFromData(const EdgeData& edgeData) {
     edge->setRoutingMode(m_edgeRoutingMode);
     edge->setTargetPort(inPort);
     addItem(edge);
+    const NodeItem* sourceNode = outPort->ownerNode();
+    const NodeItem* targetNode = inPort->ownerNode();
+    if (sourceNode && targetNode) {
+        for (QGraphicsItem* item : items()) {
+            if (EdgeItem* existing = dynamic_cast<EdgeItem*>(item)) {
+                if (!existing->sourcePort() || !existing->targetPort()) {
+                    continue;
+                }
+                const NodeItem* existingSource = existing->sourcePort()->ownerNode();
+                const NodeItem* existingTarget = existing->targetPort()->ownerNode();
+                if (!existingSource || !existingTarget) {
+                    continue;
+                }
+                if (existingSource->nodeId() == sourceNode->nodeId() && existingTarget->nodeId() == targetNode->nodeId()) {
+                    existing->updatePath();
+                }
+            }
+        }
+    }
     updateCounterFromId(edgeData.id, &m_edgeCounter);
     return edge;
 }

@@ -25,6 +25,7 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Node transform actions (`Rotate +/-90`, z-order front/back/step)
 - Group/Ungroup actions with JSON persistence (`Ctrl+G` / `Ctrl+Shift+G`)
 - Auto layout v2 options: mode (`Layered` / `Grid`) and configurable spacing (`X` / `Y`)
+- Routing v2 follow-up: dense parallel edges get bundle/spread offsets to reduce overlap
 
 ## Requirements
 
