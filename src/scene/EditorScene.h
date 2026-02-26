@@ -22,6 +22,11 @@ enum class InteractionMode {
     Place
 };
 
+enum class AutoLayoutMode {
+    Layered,
+    Grid
+};
+
 class EditorScene : public QGraphicsScene {
     Q_OBJECT
 
@@ -63,6 +68,11 @@ public:
     void setPlacementType(const QString& typeName);
     void setEdgeRoutingMode(EdgeRoutingMode mode);
     EdgeRoutingMode edgeRoutingMode() const;
+    void setAutoLayoutMode(AutoLayoutMode mode);
+    AutoLayoutMode autoLayoutMode() const;
+    void setAutoLayoutSpacing(qreal horizontal, qreal vertical);
+    qreal autoLayoutHorizontalSpacing() const;
+    qreal autoLayoutVerticalSpacing() const;
 
 signals:
     void selectionInfoChanged(const QString& itemType,
@@ -110,6 +120,8 @@ private:
     QVector<NodeItem*> collectSelectedNodes() const;
     QVector<NodeItem*> collectLayoutNodes(bool selectedOnly) const;
     bool applyAutoLayout(const QVector<NodeItem*>& nodes);
+    bool applyLayeredAutoLayout(const QVector<NodeItem*>& nodes, qreal xSpacing, qreal ySpacing);
+    bool applyGridAutoLayout(const QVector<NodeItem*>& nodes, qreal xSpacing, qreal ySpacing);
     void finishConnectionAt(const QPointF& scenePos, PortItem* explicitTarget = nullptr);
     NodeItem* buildNodeByType(const QString& typeName);
     NodeItem* buildNode(const QString& nodeId,
@@ -136,4 +148,7 @@ private:
     InteractionMode m_mode = InteractionMode::Select;
     QString m_placementType;
     EdgeRoutingMode m_edgeRoutingMode = EdgeRoutingMode::Manhattan;
+    AutoLayoutMode m_autoLayoutMode = AutoLayoutMode::Layered;
+    qreal m_autoLayoutHorizontalSpacing = 240.0;
+    qreal m_autoLayoutVerticalSpacing = 140.0;
 };

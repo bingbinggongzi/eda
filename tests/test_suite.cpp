@@ -20,6 +20,7 @@
 #include <QTemporaryDir>
 #include <QToolBar>
 #include <QtTest>
+#include <QtGlobal>
 #include <QUndoStack>
 
 #include <cmath>
@@ -241,6 +242,7 @@ private slots:
     void edgeConnectionRules();
     void granularCommandMerge();
     void autoLayoutUndoAndSelection();
+    void autoLayoutModesAndSpacing();
     void rotateAndLayerUndo();
     void groupUngroupUndo();
     void obstacleRoutingToggle();
@@ -567,6 +569,96 @@ void EdaSuite::autoLayoutUndoAndSelection() {
         QVERIFY(scene.autoLayoutWithUndo(true));
         QCOMPARE(c->pos(), cBefore);
         QCOMPARE(undoStack.count(), 1);
+    }
+}
+
+void EdaSuite::autoLayoutModesAndSpacing() {
+    {
+        EditorScene scene;
+        scene.setSnapToGrid(false);
+        QUndoStack undoStack;
+        scene.setUndoStack(&undoStack);
+
+        scene.setAutoLayoutMode(AutoLayoutMode::Grid);
+        scene.setAutoLayoutSpacing(300.0, 180.0);
+
+        NodeItem* n1 = scene.createNode(QStringLiteral("tm_Node"), QPointF(120.0, 420.0));
+        NodeItem* n2 = scene.createNode(QStringLiteral("tm_Node"), QPointF(640.0, 140.0));
+        NodeItem* n3 = scene.createNode(QStringLiteral("tm_Node"), QPointF(320.0, 260.0));
+        NodeItem* n4 = scene.createNode(QStringLiteral("tm_Node"), QPointF(520.0, 560.0));
+        QVERIFY(n1 != nullptr);
+        QVERIFY(n2 != nullptr);
+        QVERIFY(n3 != nullptr);
+        QVERIFY(n4 != nullptr);
+        const QString n1Id = n1->nodeId();
+        const QString n2Id = n2->nodeId();
+        const QString n3Id = n3->nodeId();
+        const QString n4Id = n4->nodeId();
+        const QPointF p1Before = n1->pos();
+        const QPointF p2Before = n2->pos();
+        const QPointF p3Before = n3->pos();
+        const QPointF p4Before = n4->pos();
+
+        QVERIFY(scene.autoLayoutWithUndo(false));
+        QCOMPARE(undoStack.count(), 1);
+
+        const qreal minX = std::min(std::min(n1->pos().x(), n2->pos().x()), std::min(n3->pos().x(), n4->pos().x()));
+        const qreal minY = std::min(std::min(n1->pos().y(), n2->pos().y()), std::min(n3->pos().y(), n4->pos().y()));
+
+        QVector<QPointF> normalized{
+            QPointF(n1->pos().x() - minX, n1->pos().y() - minY),
+            QPointF(n2->pos().x() - minX, n2->pos().y() - minY),
+            QPointF(n3->pos().x() - minX, n3->pos().y() - minY),
+            QPointF(n4->pos().x() - minX, n4->pos().y() - minY),
+        };
+
+        QSet<QString> expected{
+            QStringLiteral("0,0"),
+            QStringLiteral("300,0"),
+            QStringLiteral("0,180"),
+            QStringLiteral("300,180"),
+        };
+        for (const QPointF& p : normalized) {
+            expected.remove(QStringLiteral("%1,%2").arg(qRound(p.x())).arg(qRound(p.y())));
+        }
+        QVERIFY(expected.isEmpty());
+
+        undoStack.undo();
+        n1 = findNodeById(scene, n1Id);
+        n2 = findNodeById(scene, n2Id);
+        n3 = findNodeById(scene, n3Id);
+        n4 = findNodeById(scene, n4Id);
+        QVERIFY(n1 != nullptr);
+        QVERIFY(n2 != nullptr);
+        QVERIFY(n3 != nullptr);
+        QVERIFY(n4 != nullptr);
+        QCOMPARE(n1->pos(), p1Before);
+        QCOMPARE(n2->pos(), p2Before);
+        QCOMPARE(n3->pos(), p3Before);
+        QCOMPARE(n4->pos(), p4Before);
+    }
+
+    {
+        EditorScene scene;
+        scene.setSnapToGrid(false);
+
+        scene.setAutoLayoutMode(AutoLayoutMode::Layered);
+        scene.setAutoLayoutSpacing(320.0, 160.0);
+
+        NodeItem* a = scene.createNode(QStringLiteral("tm_Node"), QPointF(600.0, 300.0));
+        NodeItem* b = scene.createNode(QStringLiteral("tm_Node"), QPointF(260.0, 120.0));
+        NodeItem* c = scene.createNode(QStringLiteral("tm_Node"), QPointF(200.0, 520.0));
+        QVERIFY(a != nullptr);
+        QVERIFY(b != nullptr);
+        QVERIFY(c != nullptr);
+        QVERIFY(scene.createEdge(b->firstOutputPort(), a->firstInputPort()) != nullptr);
+        QVERIFY(scene.createEdge(a->firstOutputPort(), c->firstInputPort()) != nullptr);
+
+        QVERIFY(scene.autoLayoutWithUndo(false));
+        const qreal dx1 = a->pos().x() - b->pos().x();
+        const qreal dx2 = c->pos().x() - a->pos().x();
+        QVERIFY(std::abs(dx1 - 320.0) < 0.6);
+        QVERIFY(std::abs(dx2 - 320.0) < 0.6);
     }
 }
 

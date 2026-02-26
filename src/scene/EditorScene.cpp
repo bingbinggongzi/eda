@@ -763,6 +763,28 @@ EdgeRoutingMode EditorScene::edgeRoutingMode() const {
     return m_edgeRoutingMode;
 }
 
+void EditorScene::setAutoLayoutMode(AutoLayoutMode mode) {
+    m_autoLayoutMode = mode;
+}
+
+AutoLayoutMode EditorScene::autoLayoutMode() const {
+    return m_autoLayoutMode;
+}
+
+void EditorScene::setAutoLayoutSpacing(qreal horizontal, qreal vertical) {
+    constexpr qreal kMinSpacing = 40.0;
+    m_autoLayoutHorizontalSpacing = std::max(kMinSpacing, horizontal);
+    m_autoLayoutVerticalSpacing = std::max(kMinSpacing, vertical);
+}
+
+qreal EditorScene::autoLayoutHorizontalSpacing() const {
+    return m_autoLayoutHorizontalSpacing;
+}
+
+qreal EditorScene::autoLayoutVerticalSpacing() const {
+    return m_autoLayoutVerticalSpacing;
+}
+
 void EditorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
     m_draggingGroup = nullptr;
     m_draggingGroupTracked = false;
@@ -1216,6 +1238,27 @@ bool EditorScene::applyAutoLayout(const QVector<NodeItem*>& nodes) {
         return false;
     }
 
+    const qreal xSpacing = std::max<qreal>(40.0, m_autoLayoutHorizontalSpacing);
+    const qreal ySpacing = std::max<qreal>(40.0, m_autoLayoutVerticalSpacing);
+
+    bool changed = false;
+    if (m_autoLayoutMode == AutoLayoutMode::Grid) {
+        changed = applyGridAutoLayout(nodes, xSpacing, ySpacing);
+    } else {
+        changed = applyLayeredAutoLayout(nodes, xSpacing, ySpacing);
+    }
+    if (!changed) {
+        return false;
+    }
+
+    emit graphChanged();
+    if (!selectedItems().isEmpty()) {
+        onSelectionChangedInternal();
+    }
+    return true;
+}
+
+bool EditorScene::applyLayeredAutoLayout(const QVector<NodeItem*>& nodes, qreal xSpacing, qreal ySpacing) {
     QRectF oldBounds;
     bool oldBoundsInitialized = false;
     QHash<NodeItem*, int> nodeIndex;
@@ -1332,9 +1375,6 @@ bool EditorScene::applyAutoLayout(const QVector<NodeItem*>& nodes) {
         layerBuckets[layer[i]].push_back(i);
     }
 
-    constexpr qreal kLayerXSpacing = 240.0;
-    constexpr qreal kLayerYSpacing = 140.0;
-
     QVector<QPointF> targetPositions(nodes.size(), QPointF());
     QRectF newBounds;
     bool newBoundsInitialized = false;
@@ -1345,7 +1385,7 @@ bool EditorScene::applyAutoLayout(const QVector<NodeItem*>& nodes) {
         std::sort(bucket.begin(), bucket.end(), compareNodeOrder);
         for (int row = 0; row < bucket.size(); ++row) {
             const int nodeIdx = bucket[row];
-            const QPointF target(column * kLayerXSpacing, row * kLayerYSpacing);
+            const QPointF target(column * xSpacing, row * ySpacing);
             targetPositions[nodeIdx] = target;
 
             const QRectF nodeRect(target, nodes[nodeIdx]->nodeSize());
@@ -1371,16 +1411,82 @@ bool EditorScene::applyAutoLayout(const QVector<NodeItem*>& nodes) {
         nodes[i]->setPos(finalPos);
         changed = true;
     }
+    return changed;
+}
 
-    if (!changed) {
+bool EditorScene::applyGridAutoLayout(const QVector<NodeItem*>& nodes, qreal xSpacing, qreal ySpacing) {
+    QRectF oldBounds;
+    bool oldBoundsInitialized = false;
+    for (NodeItem* node : nodes) {
+        if (!node) {
+            continue;
+        }
+        const QRectF rect = node->sceneBoundingRect();
+        oldBounds = oldBoundsInitialized ? oldBounds.united(rect) : rect;
+        oldBoundsInitialized = true;
+    }
+    if (!oldBoundsInitialized) {
         return false;
     }
 
-    emit graphChanged();
-    if (!selectedItems().isEmpty()) {
-        onSelectionChangedInternal();
+    QVector<int> order;
+    order.reserve(nodes.size());
+    for (int i = 0; i < nodes.size(); ++i) {
+        if (nodes[i]) {
+            order.push_back(i);
+        }
     }
-    return true;
+    if (order.size() < 2) {
+        return false;
+    }
+
+    std::sort(order.begin(), order.end(), [&nodes](int lhs, int rhs) {
+        const QPointF a = nodes[lhs]->pos();
+        const QPointF b = nodes[rhs]->pos();
+        if (!qFuzzyCompare(a.y() + 1.0, b.y() + 1.0)) {
+            return a.y() < b.y();
+        }
+        if (!qFuzzyCompare(a.x() + 1.0, b.x() + 1.0)) {
+            return a.x() < b.x();
+        }
+        return nodes[lhs]->nodeId() < nodes[rhs]->nodeId();
+    });
+
+    const int columns = std::max(2, static_cast<int>(std::ceil(std::sqrt(static_cast<double>(order.size())))));
+
+    QVector<QPointF> targetPositions(nodes.size(), QPointF());
+    QRectF newBounds;
+    bool newBoundsInitialized = false;
+    for (int i = 0; i < order.size(); ++i) {
+        const int nodeIdx = order[i];
+        const int row = i / columns;
+        const int column = i % columns;
+        const QPointF target(column * xSpacing, row * ySpacing);
+        targetPositions[nodeIdx] = target;
+
+        const QRectF nodeRect(target, nodes[nodeIdx]->nodeSize());
+        newBounds = newBoundsInitialized ? newBounds.united(nodeRect) : nodeRect;
+        newBoundsInitialized = true;
+    }
+
+    if (!newBoundsInitialized) {
+        return false;
+    }
+
+    const QPointF translation = oldBounds.center() - newBounds.center();
+    bool changed = false;
+    for (int nodeIdx : order) {
+        QPointF finalPos = targetPositions[nodeIdx] + translation;
+        if (m_snapToGrid) {
+            finalPos = snapPoint(finalPos);
+        }
+        if (nodes[nodeIdx]->pos() == finalPos) {
+            continue;
+        }
+        nodes[nodeIdx]->setPos(finalPos);
+        changed = true;
+    }
+    return changed;
 }
 
 void EditorScene::finishConnectionAt(const QPointF& scenePos, PortItem* explicitTarget) {

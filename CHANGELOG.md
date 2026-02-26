@@ -18,3 +18,4 @@ All notable changes to this project should be documented in this file.
 - Added auto layout regression coverage for ordering, selection scope, and undo command registration.
 - Added node transform actions (`Rotate +/-90`, z-order front/back/step) with undo and JSON persistence.
 - Added `Group/Ungroup` actions with undo, scene rehydrate support, and grouped-selection behavior.
+- Added auto layout v2 controls with explicit mode (`Layered` / `Grid`) and configurable spacing.

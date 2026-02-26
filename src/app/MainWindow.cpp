@@ -33,6 +33,7 @@
 #include <QUndoGroup>
 #include <QUndoStack>
 #include <QVBoxLayout>
+#include <QtGlobal>
 
 #include <algorithm>
 
@@ -801,7 +802,7 @@ void MainWindow::updatePropertyTable(const QString& itemType,
     NodeItem* selectedNode = (itemType == QStringLiteral("node")) ? findNodeById(itemId) : nullptr;
     const QVector<PropertyData> customProps = selectedNode ? selectedNode->properties() : QVector<PropertyData>();
 
-    const int baseRows = 9;
+    const int baseRows = 12;
     m_propertyTable->clearContents();
     m_propertyTable->setRowCount(baseRows + customProps.size());
 
@@ -857,6 +858,52 @@ void MainWindow::updatePropertyTable(const QString& itemType,
         const EdgeRoutingMode mode =
             (text == QStringLiteral("Avoid Nodes")) ? EdgeRoutingMode::ObstacleAvoiding : EdgeRoutingMode::Manhattan;
         m_scene->setEdgeRoutingMode(mode);
+    });
+
+    auto* autoLayoutModeKey = new QTableWidgetItem(QStringLiteral("Auto Layout Mode"));
+    autoLayoutModeKey->setFlags(autoLayoutModeKey->flags() & ~Qt::ItemIsEditable);
+    m_propertyTable->setItem(9, 0, autoLayoutModeKey);
+    auto* autoLayoutModeCombo = new QComboBox(m_propertyTable);
+    autoLayoutModeCombo->addItems({QStringLiteral("Layered"), QStringLiteral("Grid")});
+    const QString autoLayoutModeText = (m_scene && m_scene->autoLayoutMode() == AutoLayoutMode::Grid)
+                                           ? QStringLiteral("Grid")
+                                           : QStringLiteral("Layered");
+    autoLayoutModeCombo->setCurrentText(autoLayoutModeText);
+    m_propertyTable->setCellWidget(9, 1, autoLayoutModeCombo);
+    connect(autoLayoutModeCombo, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+        if (m_propertyTableUpdating || !m_scene) {
+            return;
+        }
+        const AutoLayoutMode mode = (text == QStringLiteral("Grid")) ? AutoLayoutMode::Grid : AutoLayoutMode::Layered;
+        m_scene->setAutoLayoutMode(mode);
+    });
+
+    auto* layoutXKey = new QTableWidgetItem(QStringLiteral("Layout X Spacing"));
+    layoutXKey->setFlags(layoutXKey->flags() & ~Qt::ItemIsEditable);
+    m_propertyTable->setItem(10, 0, layoutXKey);
+    auto* layoutXSpin = new QSpinBox(m_propertyTable);
+    layoutXSpin->setRange(40, 2000);
+    layoutXSpin->setValue(m_scene ? qRound(m_scene->autoLayoutHorizontalSpacing()) : 240);
+    m_propertyTable->setCellWidget(10, 1, layoutXSpin);
+    connect(layoutXSpin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
+        if (m_propertyTableUpdating || !m_scene) {
+            return;
+        }
+        m_scene->setAutoLayoutSpacing(static_cast<qreal>(value), m_scene->autoLayoutVerticalSpacing());
+    });
+
+    auto* layoutYKey = new QTableWidgetItem(QStringLiteral("Layout Y Spacing"));
+    layoutYKey->setFlags(layoutYKey->flags() & ~Qt::ItemIsEditable);
+    m_propertyTable->setItem(11, 0, layoutYKey);
+    auto* layoutYSpin = new QSpinBox(m_propertyTable);
+    layoutYSpin->setRange(40, 2000);
+    layoutYSpin->setValue(m_scene ? qRound(m_scene->autoLayoutVerticalSpacing()) : 140);
+    m_propertyTable->setCellWidget(11, 1, layoutYSpin);
+    connect(layoutYSpin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
+        if (m_propertyTableUpdating || !m_scene) {
+            return;
+        }
+        m_scene->setAutoLayoutSpacing(m_scene->autoLayoutHorizontalSpacing(), static_cast<qreal>(value));
     });
 
     for (int i = 0; i < customProps.size(); ++i) {

@@ -211,6 +211,7 @@ Acceptance:
 - One-click auto layout added (selected nodes or whole graph fallback) with undo integration
 - Node transform controls added (rotate, bring front/back, step forward/backward) with undo + persistence
 - Group/Ungroup flow added with undo + persistence and grouped selection behavior
+- Auto layout v2 added with explicit mode switch (layered/grid) and spacing controls
 
 ## 7. Current Execution Queue (Next Up)
 
