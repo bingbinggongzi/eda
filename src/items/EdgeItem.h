@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QGraphicsPathItem>
+#include <QPointF>
 #include <QPointer>
 #include <QString>
 
@@ -33,6 +34,7 @@ public:
     EdgeRoutingProfile routingProfile() const;
     EdgeBundlePolicy bundlePolicy() const;
     qreal bundleSpacing() const;
+    bool passthrough() const;
 
     void setTargetPort(PortItem* port);
     void setPreviewEnd(const QPointF& scenePos);
@@ -40,6 +42,12 @@ public:
     void setRoutingProfile(EdgeRoutingProfile profile);
     void setBundlePolicy(EdgeBundlePolicy policy);
     void setBundleSpacing(qreal spacing);
+    void setPassthrough(bool enabled);
+    void setSourceEndpointOverride(const QPointF& scenePos);
+    void clearSourceEndpointOverride();
+    void setTargetEndpointOverride(const QPointF& scenePos);
+    void clearTargetEndpointOverride();
+    void clearEndpointOverrides();
     void updatePath();
 
 private:
@@ -51,4 +59,9 @@ private:
     EdgeRoutingProfile m_routingProfile = EdgeRoutingProfile::Balanced;
     EdgeBundlePolicy m_bundlePolicy = EdgeBundlePolicy::Centered;
     qreal m_bundleSpacing = 18.0;
+    bool m_passthrough = false;
+    bool m_hasSourceOverride = false;
+    bool m_hasTargetOverride = false;
+    QPointF m_sourceOverride;
+    QPointF m_targetOverride;
 };

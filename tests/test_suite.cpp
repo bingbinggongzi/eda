@@ -249,6 +249,7 @@ private slots:
     void groupUngroupUndo();
     void groupVisualAndSelectMembers();
     void groupCollapseUndoPersistenceAndNestedGuard();
+    void groupCollapseEdgePassthrough();
     void groupHeaderToggleByClick();
     void obstacleRoutingToggle();
     void obstacleRoutingDirectionalBias();
@@ -941,6 +942,74 @@ void EdaSuite::groupCollapseUndoPersistenceAndNestedGuard() {
     QVERIFY(b != nullptr);
     QVERIFY(a->isVisible());
     QVERIFY(b->isVisible());
+}
+
+void EdaSuite::groupCollapseEdgePassthrough() {
+    EditorScene scene;
+    scene.setSnapToGrid(false);
+
+    NodeItem* a = scene.createNode(QStringLiteral("tm_Node"), QPointF(120.0, 120.0));
+    NodeItem* b = scene.createNode(QStringLiteral("tm_Node"), QPointF(340.0, 120.0));
+    NodeItem* c = scene.createNode(QStringLiteral("tm_Node"), QPointF(620.0, 120.0));
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+    QVERIFY(c != nullptr);
+
+    EdgeItem* internalEdge = scene.createEdge(a->firstOutputPort(), b->firstInputPort());
+    EdgeItem* boundaryEdge = scene.createEdge(a->firstOutputPort(), c->firstInputPort());
+    QVERIFY(internalEdge != nullptr);
+    QVERIFY(boundaryEdge != nullptr);
+
+    const QPointF sourcePortPosBefore = a->firstOutputPort()->scenePos();
+
+    a->setSelected(true);
+    b->setSelected(true);
+    QVERIFY(scene.groupSelectionWithUndo());
+    const QString groupId = a->groupId();
+    QVERIFY(!groupId.isEmpty());
+
+    scene.clearSelection();
+    a->setSelected(true);
+    QVERIFY(scene.collapseSelectionWithUndo());
+
+    QVERIFY(!a->isVisible());
+    QVERIFY(!b->isVisible());
+    QVERIFY(c->isVisible());
+    QVERIFY(!internalEdge->isVisible());
+    QVERIFY(boundaryEdge->isVisible());
+    QVERIFY(boundaryEdge->passthrough());
+    QCOMPARE(boundaryEdge->pen().style(), Qt::DashDotLine);
+
+    QGraphicsItemGroup* group = nullptr;
+    for (QGraphicsItem* item : scene.items()) {
+        QGraphicsItemGroup* candidate = dynamic_cast<QGraphicsItemGroup*>(item);
+        if (candidate && candidate->data(0).toString() == groupId) {
+            group = candidate;
+            break;
+        }
+    }
+    QVERIFY(group != nullptr);
+    const QPointF groupCenter = group->sceneBoundingRect().center();
+    const QVector<QPointF> collapsedPoints = pathPolyline(boundaryEdge->path());
+    QVERIFY(collapsedPoints.size() >= 2);
+
+    auto distance = [](const QPointF& lhs, const QPointF& rhs) {
+        return std::hypot(lhs.x() - rhs.x(), lhs.y() - rhs.y());
+    };
+    const QPointF collapsedStart = collapsedPoints.first();
+    QVERIFY(distance(collapsedStart, sourcePortPosBefore) > 5.0);
+    QVERIFY(distance(collapsedStart, groupCenter) < 2.5);
+
+    scene.clearSelection();
+    group->setSelected(true);
+    QVERIFY(scene.expandSelectionWithUndo());
+    QVERIFY(internalEdge->isVisible());
+    QVERIFY(!boundaryEdge->passthrough());
+    QCOMPARE(boundaryEdge->pen().style(), Qt::SolidLine);
+
+    const QVector<QPointF> expandedPoints = pathPolyline(boundaryEdge->path());
+    QVERIFY(expandedPoints.size() >= 2);
+    QVERIFY(distance(expandedPoints.first(), sourcePortPosBefore) < 2.5);
 }
 
 void EdaSuite::groupHeaderToggleByClick() {

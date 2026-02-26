@@ -1597,7 +1597,7 @@ QSet<QString> EditorScene::collectSelectedGroupIds() const {
 }
 
 void EditorScene::refreshCollapsedVisibility() {
-    QSet<QString> collapsedNodeIds;
+    QHash<QString, QPointF> collapsedGroupCenters;
     for (QGraphicsItem* item : items()) {
         NodeItem* node = dynamic_cast<NodeItem*>(item);
         if (!node) {
@@ -1609,7 +1609,13 @@ void EditorScene::refreshCollapsedVisibility() {
             node->setSelected(false);
         }
         if (collapsed) {
-            collapsedNodeIds.insert(node->nodeId());
+            if (!collapsedGroupCenters.contains(node->groupId())) {
+                if (QGraphicsItemGroup* group = m_nodeGroups.value(node->groupId(), nullptr)) {
+                    collapsedGroupCenters.insert(node->groupId(), group->sceneBoundingRect().center());
+                } else {
+                    collapsedGroupCenters.insert(node->groupId(), node->sceneBoundingRect().center());
+                }
+            }
         }
     }
 
@@ -1623,11 +1629,37 @@ void EditorScene::refreshCollapsedVisibility() {
         if (!sourceNode || !targetNode) {
             continue;
         }
-        const bool hidden = collapsedNodeIds.contains(sourceNode->nodeId()) || collapsedNodeIds.contains(targetNode->nodeId());
+        const QString sourceGroupId = sourceNode->groupId();
+        const QString targetGroupId = targetNode->groupId();
+        const bool sourceCollapsed = !sourceGroupId.isEmpty() && m_collapsedGroups.contains(sourceGroupId);
+        const bool targetCollapsed = !targetGroupId.isEmpty() && m_collapsedGroups.contains(targetGroupId);
+        const bool hidden = sourceCollapsed && targetCollapsed && sourceGroupId == targetGroupId;
+
         edge->setVisible(!hidden);
         if (hidden && edge->isSelected()) {
             edge->setSelected(false);
         }
+        if (hidden) {
+            edge->setPassthrough(false);
+            edge->clearEndpointOverrides();
+            continue;
+        }
+
+        if (sourceCollapsed) {
+            const QPointF sourceAnchor = collapsedGroupCenters.value(sourceGroupId, sourceNode->sceneBoundingRect().center());
+            edge->setSourceEndpointOverride(sourceAnchor);
+        } else {
+            edge->clearSourceEndpointOverride();
+        }
+
+        if (targetCollapsed) {
+            const QPointF targetAnchor = collapsedGroupCenters.value(targetGroupId, targetNode->sceneBoundingRect().center());
+            edge->setTargetEndpointOverride(targetAnchor);
+        } else {
+            edge->clearTargetEndpointOverride();
+        }
+
+        edge->setPassthrough(sourceCollapsed || targetCollapsed);
     }
 
     for (auto it = m_nodeGroups.constBegin(); it != m_nodeGroups.constEnd(); ++it) {

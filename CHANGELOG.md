@@ -26,3 +26,4 @@ All notable changes to this project should be documented in this file.
 - Added routing v3 controls for bundle policy and spacing, including persistence and regression coverage.
 - Added group v4 header toggle control (`+/-`) with click-driven collapse/expand and refined shortcuts.
 - Added routing v4 global profile (`Balanced` / `Dense`) with adaptive high-density spread behavior and persistence.
+- Added group v5 selective collapsed-edge passthrough: internal group edges are hidden while cross-boundary edges stay visible and reroute to collapsed group anchors.

@@ -602,6 +602,10 @@ qreal EdgeItem::bundleSpacing() const {
     return m_bundleSpacing;
 }
 
+bool EdgeItem::passthrough() const {
+    return m_passthrough;
+}
+
 void EdgeItem::setTargetPort(PortItem* port) {
     if (m_targetPort == port) {
         return;
@@ -654,13 +658,64 @@ void EdgeItem::setBundleSpacing(qreal spacing) {
     updatePath();
 }
 
+void EdgeItem::setPassthrough(bool enabled) {
+    if (m_passthrough == enabled) {
+        return;
+    }
+    m_passthrough = enabled;
+    updatePath();
+}
+
+void EdgeItem::setSourceEndpointOverride(const QPointF& scenePos) {
+    if (m_hasSourceOverride && samePoint(m_sourceOverride, scenePos)) {
+        return;
+    }
+    m_hasSourceOverride = true;
+    m_sourceOverride = scenePos;
+    updatePath();
+}
+
+void EdgeItem::clearSourceEndpointOverride() {
+    if (!m_hasSourceOverride) {
+        return;
+    }
+    m_hasSourceOverride = false;
+    updatePath();
+}
+
+void EdgeItem::setTargetEndpointOverride(const QPointF& scenePos) {
+    if (m_hasTargetOverride && samePoint(m_targetOverride, scenePos)) {
+        return;
+    }
+    m_hasTargetOverride = true;
+    m_targetOverride = scenePos;
+    updatePath();
+}
+
+void EdgeItem::clearTargetEndpointOverride() {
+    if (!m_hasTargetOverride) {
+        return;
+    }
+    m_hasTargetOverride = false;
+    updatePath();
+}
+
+void EdgeItem::clearEndpointOverrides() {
+    if (!m_hasSourceOverride && !m_hasTargetOverride) {
+        return;
+    }
+    m_hasSourceOverride = false;
+    m_hasTargetOverride = false;
+    updatePath();
+}
+
 void EdgeItem::updatePath() {
     if (!m_sourcePort) {
         return;
     }
 
-    const QPointF start = m_sourcePort->scenePos();
-    const QPointF end = m_targetPort ? m_targetPort->scenePos() : m_previewEnd;
+    const QPointF start = m_hasSourceOverride ? m_sourceOverride : m_sourcePort->scenePos();
+    const QPointF end = m_targetPort ? (m_hasTargetOverride ? m_targetOverride : m_targetPort->scenePos()) : m_previewEnd;
     const NodeItem* sourceNode = m_sourcePort->ownerNode();
     const NodeItem* targetNode = m_targetPort ? m_targetPort->ownerNode() : nullptr;
 
@@ -686,6 +741,9 @@ void EdgeItem::updatePath() {
     if (!m_targetPort) {
         pen.setStyle(Qt::DashLine);
         pen.setColor(QColor(64, 145, 255));
+    } else if (m_passthrough) {
+        pen.setStyle(Qt::DashDotLine);
+        pen.setColor(QColor(62, 102, 170));
     }
     setPen(pen);
 }
