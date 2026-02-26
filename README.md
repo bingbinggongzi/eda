@@ -45,6 +45,25 @@ or:
 .\scripts\run.ps1
 ```
 
+## CLion Symbol Navigation (Qt Headers)
+
+If "Go to Definition" on Qt symbols (for example `QGraphicsView`) does not jump to headers:
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Debug
+```
+
+Then in CLion, reload CMake for your active profile.  
+The project sets `CMAKE_NO_SYSTEM_FROM_IMPORTED=ON`, so Qt imported headers are indexed as normal includes (improves symbol navigation).
+
+Optional (if Ninja is installed):
+
+```powershell
+cmake --preset ide-debug
+cmake --build --preset ide-debug
+```
+
 ## Run Tests
 
 ```powershell

@@ -13,7 +13,8 @@
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}"
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
@@ -23,7 +24,19 @@
       "binaryDir": "${sourceDir}/build-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}"
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "ide-debug",
+      "displayName": "IDE Debug (Ninja + compile_commands)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ide",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
@@ -48,6 +61,10 @@
     {
       "name": "dev-release",
       "configurePreset": "dev-release"
+    },
+    {
+      "name": "ide-debug",
+      "configurePreset": "ide-debug"
     },
     {
       "name": "vs2022-debug",
