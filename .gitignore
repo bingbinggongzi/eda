@@ -12,6 +12,7 @@
 
 # Logs
 *.log
+/snapshot_artifacts/
 
 # Qt/CMake temporary files
 *.obj

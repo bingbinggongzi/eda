@@ -14,6 +14,8 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QGraphicsItemGroup>
+#include <QGraphicsRectItem>
+#include <QGraphicsSimpleTextItem>
 #include <QMimeData>
 #include <QSignalSpy>
 #include <QStatusBar>
@@ -245,6 +247,7 @@ private slots:
     void autoLayoutModesAndSpacing();
     void rotateAndLayerUndo();
     void groupUngroupUndo();
+    void groupVisualAndSelectMembers();
     void obstacleRoutingToggle();
     void obstacleRoutingDirectionalBias();
     void parallelEdgeBundleSpread();
@@ -781,6 +784,42 @@ void EdaSuite::groupUngroupUndo() {
     QVERIFY(b != nullptr);
     QCOMPARE(a->rotation(), aRotationBefore);
     QCOMPARE(b->rotation(), bRotationBefore);
+}
+
+void EdaSuite::groupVisualAndSelectMembers() {
+    EditorScene scene;
+    scene.setSnapToGrid(false);
+
+    NodeItem* n1 = scene.createNode(QStringLiteral("tm_Node"), QPointF(120.0, 120.0));
+    NodeItem* n2 = scene.createNode(QStringLiteral("tm_Node"), QPointF(360.0, 120.0));
+    QVERIFY(n1 != nullptr);
+    QVERIFY(n2 != nullptr);
+
+    n1->setSelected(true);
+    n2->setSelected(true);
+    QVERIFY(scene.groupSelectionWithUndo());
+
+    QGraphicsItemGroup* selectedGroup = nullptr;
+    for (QGraphicsItem* item : scene.selectedItems()) {
+        if (auto* group = dynamic_cast<QGraphicsItemGroup*>(item)) {
+            selectedGroup = group;
+            break;
+        }
+    }
+    QVERIFY(selectedGroup != nullptr);
+
+    bool hasFrame = false;
+    bool hasTitle = false;
+    for (QGraphicsItem* child : selectedGroup->childItems()) {
+        if (dynamic_cast<QGraphicsRectItem*>(child)) {
+            hasFrame = true;
+        }
+        if (dynamic_cast<QGraphicsSimpleTextItem*>(child)) {
+            hasTitle = true;
+        }
+    }
+    QVERIFY(hasFrame);
+    QVERIFY(hasTitle);
 }
 
 void EdaSuite::obstacleRoutingToggle() {

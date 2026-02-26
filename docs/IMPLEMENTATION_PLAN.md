@@ -213,11 +213,12 @@ Acceptance:
 - Group/Ungroup flow added with undo + persistence and grouped selection behavior
 - Auto layout v2 added with explicit mode switch (layered/grid) and spacing controls
 - Routing v2 follow-up completed with bundle/spread for dense parallel edges
+- Group v2 completed with visual frame/title for grouped editing readability
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Group v2: add visual group boundary/header and quick select group members
-2. Layout persistence v2: save per-document auto-layout mode/spacing defaults
+1. Layout persistence v2: save per-document auto-layout mode/spacing defaults
+2. Group v3: add collapse/expand behavior and nested-group guardrails
 
 ## 8. Merge Quality Gates
 

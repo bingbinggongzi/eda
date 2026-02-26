@@ -12,8 +12,12 @@
 
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsItemGroup>
+#include <QGraphicsRectItem>
+#include <QGraphicsSimpleTextItem>
 #include <QGraphicsView>
+#include <QColor>
 #include <QMap>
+#include <QPen>
 #include <QRegularExpression>
 #include <QSet>
 #include <QtGlobal>
@@ -1201,7 +1205,7 @@ void EditorScene::clearNodeGroups() {
         }
         const QList<QGraphicsItem*> children = group->childItems();
         for (QGraphicsItem* child : children) {
-            if (child) {
+            if (dynamic_cast<NodeItem*>(child)) {
                 child->setParentItem(nullptr);
             }
         }
@@ -1253,10 +1257,30 @@ void EditorScene::rebuildNodeGroups() {
         }
 
         QGraphicsItemGroup* group = createItemGroup(members);
-        group->setHandlesChildEvents(true);
+        group->setHandlesChildEvents(false);
         group->setFlag(QGraphicsItem::ItemIsSelectable, true);
         group->setFlag(QGraphicsItem::ItemIsMovable, true);
         group->setData(0, groupId);
+
+        const QRectF contentBounds = group->childrenBoundingRect();
+        const QRectF frameRect = contentBounds.adjusted(-14.0, -28.0, 14.0, 14.0);
+
+        auto* frame = new QGraphicsRectItem(frameRect, group);
+        frame->setPen(QPen(QColor(80, 120, 190), 1.2, Qt::DashLine));
+        frame->setBrush(QColor(170, 195, 235, 24));
+        frame->setAcceptedMouseButtons(Qt::NoButton);
+        frame->setFlag(QGraphicsItem::ItemIsSelectable, false);
+        frame->setFlag(QGraphicsItem::ItemIsMovable, false);
+        frame->setZValue(-1000.0);
+
+        auto* title = new QGraphicsSimpleTextItem(QStringLiteral("Group %1").arg(groupId), group);
+        title->setBrush(QColor(64, 94, 146));
+        title->setPos(frameRect.left() + 8.0, frameRect.top() + 4.0);
+        title->setAcceptedMouseButtons(Qt::NoButton);
+        title->setFlag(QGraphicsItem::ItemIsSelectable, false);
+        title->setFlag(QGraphicsItem::ItemIsMovable, false);
+        title->setZValue(-999.0);
+
         m_nodeGroups.insert(groupId, group);
         updateCounterFromId(groupId, &m_groupCounter);
     }
