@@ -201,6 +201,8 @@ void MainWindow::setupMenusAndToolbar() {
     editMenu->addSeparator();
     QAction* deleteAction = editMenu->addAction(QStringLiteral("Delete"));
     deleteAction->setShortcut(QKeySequence::Delete);
+    QAction* autoLayoutAction = editMenu->addAction(QStringLiteral("Auto Layout"));
+    autoLayoutAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+L")));
 
     runMenu->addAction(style()->standardIcon(QStyle::SP_MediaPlay), QStringLiteral("Run"));
     runMenu->addAction(style()->standardIcon(QStyle::SP_MediaStop), QStringLiteral("Stop"));
@@ -216,6 +218,7 @@ void MainWindow::setupMenusAndToolbar() {
     toolBar->addAction(redoAction);
     toolBar->addSeparator();
     toolBar->addAction(clearAction);
+    toolBar->addAction(autoLayoutAction);
     toolBar->addSeparator();
     toolBar->addAction(style()->standardIcon(QStyle::SP_MediaPlay), QStringLiteral("Run"));
 
@@ -257,6 +260,18 @@ void MainWindow::setupMenusAndToolbar() {
         if (m_scene) {
             m_scene->deleteSelectionWithUndo();
         }
+    });
+
+    connect(autoLayoutAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->autoLayoutWithUndo(true)) {
+            rebuildProjectTreeNodes();
+            statusBar()->showMessage(QStringLiteral("Auto layout applied"), 2000);
+            return;
+        }
+        statusBar()->showMessage(QStringLiteral("Auto layout skipped"), 1200);
     });
 }
 

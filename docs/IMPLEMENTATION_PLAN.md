@@ -208,11 +208,12 @@ Acceptance:
 - Palette drag-drop preview feedback added in canvas foreground
 - File lifecycle regression tests added (`New/Open/Save As/Close` + dirty prompt branches)
 - UI snapshot regression framework added (golden images + tolerance compare + diff artifacts)
+- One-click auto layout added (selected nodes or whole graph fallback) with undo integration
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Auto layout: provide one-click layered/grid arrangement for selected graph
-2. Routing v2 follow-up: add route bundling/spread strategy for dense parallel edges
+1. Routing v2 follow-up: add route bundling/spread strategy for dense parallel edges
+2. Auto layout v2: add explicit layout modes (layered/grid) and spacing options
 
 ## 8. Merge Quality Gates
 

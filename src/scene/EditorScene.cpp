@@ -12,6 +12,7 @@
 
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
+#include <QMap>
 #include <QRegularExpression>
 #include <QSet>
 #include <QUndoStack>
@@ -65,6 +66,10 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
 EditorScene::EditorScene(QObject* parent)
     : QGraphicsScene(parent) {
     connect(this, &QGraphicsScene::selectionChanged, this, &EditorScene::onSelectionChangedInternal);
+}
+
+EditorScene::~EditorScene() {
+    disconnect(this, &QGraphicsScene::selectionChanged, this, &EditorScene::onSelectionChangedInternal);
 }
 
 NodeItem* EditorScene::createNode(const QString& typeName, const QPointF& scenePos) {
@@ -194,6 +199,28 @@ bool EditorScene::setNodePropertyWithUndo(const QString& nodeId, const QString& 
 
     if (m_undoStack) {
         m_undoStack->push(new NodePropertyCommand(this, nodeId, key, oldValue, value, true));
+    }
+    return true;
+}
+
+bool EditorScene::autoLayoutWithUndo(bool selectedOnly) {
+    const QVector<NodeItem*> layoutNodes = collectLayoutNodes(selectedOnly);
+    if (layoutNodes.size() < 2) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    if (!applyAutoLayout(layoutNodes)) {
+        return false;
+    }
+
+    const GraphDocument after = toDocument();
+    if (areDocumentsEquivalent(before, after)) {
+        return false;
+    }
+
+    if (m_undoStack) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Auto Layout"), true));
     }
     return true;
 }
@@ -685,6 +712,207 @@ PortItem* EditorScene::pickPortAt(const QPointF& scenePos) const {
         }
     }
     return nullptr;
+}
+
+QVector<NodeItem*> EditorScene::collectLayoutNodes(bool selectedOnly) const {
+    QVector<NodeItem*> selectedNodes;
+    if (selectedOnly) {
+        const QList<QGraphicsItem*> selected = selectedItems();
+        selectedNodes.reserve(selected.size());
+        for (QGraphicsItem* item : selected) {
+            if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+                selectedNodes.push_back(node);
+            }
+        }
+    }
+
+    QVector<NodeItem*> nodes;
+    if (selectedNodes.size() >= 2) {
+        nodes = selectedNodes;
+    } else {
+        const QList<QGraphicsItem*> sceneItems = items();
+        nodes.reserve(sceneItems.size());
+        for (QGraphicsItem* item : sceneItems) {
+            if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+                nodes.push_back(node);
+            }
+        }
+    }
+
+    std::sort(nodes.begin(), nodes.end(), [](const NodeItem* a, const NodeItem* b) { return a->nodeId() < b->nodeId(); });
+    return nodes;
+}
+
+bool EditorScene::applyAutoLayout(const QVector<NodeItem*>& nodes) {
+    if (nodes.size() < 2) {
+        return false;
+    }
+
+    QRectF oldBounds;
+    bool oldBoundsInitialized = false;
+    QHash<NodeItem*, int> nodeIndex;
+    nodeIndex.reserve(nodes.size());
+    for (int i = 0; i < nodes.size(); ++i) {
+        NodeItem* node = nodes[i];
+        if (!node) {
+            continue;
+        }
+        nodeIndex.insert(node, i);
+        const QRectF rect = node->sceneBoundingRect();
+        oldBounds = oldBoundsInitialized ? oldBounds.united(rect) : rect;
+        oldBoundsInitialized = true;
+    }
+    if (!oldBoundsInitialized || nodeIndex.size() < 2) {
+        return false;
+    }
+
+    QVector<QVector<int>> outgoing(nodes.size());
+    QVector<int> indegree(nodes.size(), 0);
+    QSet<quint64> edgeDedup;
+
+    for (QGraphicsItem* item : items()) {
+        EdgeItem* edge = dynamic_cast<EdgeItem*>(item);
+        if (!edge || !edge->sourcePort() || !edge->targetPort()) {
+            continue;
+        }
+        NodeItem* fromNode = edge->sourcePort()->ownerNode();
+        NodeItem* toNode = edge->targetPort()->ownerNode();
+        if (!fromNode || !toNode || fromNode == toNode) {
+            continue;
+        }
+        const int fromIndex = nodeIndex.value(fromNode, -1);
+        const int toIndex = nodeIndex.value(toNode, -1);
+        if (fromIndex < 0 || toIndex < 0) {
+            continue;
+        }
+
+        const quint64 key = (static_cast<quint64>(static_cast<quint32>(fromIndex)) << 32) |
+                            static_cast<quint32>(toIndex);
+        if (edgeDedup.contains(key)) {
+            continue;
+        }
+        edgeDedup.insert(key);
+
+        outgoing[fromIndex].push_back(toIndex);
+        ++indegree[toIndex];
+    }
+
+    auto compareNodeOrder = [&nodes](int lhs, int rhs) {
+        const QPointF a = nodes[lhs]->pos();
+        const QPointF b = nodes[rhs]->pos();
+        if (!qFuzzyCompare(a.y() + 1.0, b.y() + 1.0)) {
+            return a.y() < b.y();
+        }
+        if (!qFuzzyCompare(a.x() + 1.0, b.x() + 1.0)) {
+            return a.x() < b.x();
+        }
+        return nodes[lhs]->nodeId() < nodes[rhs]->nodeId();
+    };
+
+    QVector<int> frontier;
+    frontier.reserve(nodes.size());
+    for (int i = 0; i < indegree.size(); ++i) {
+        if (indegree[i] == 0) {
+            frontier.push_back(i);
+        }
+    }
+    std::sort(frontier.begin(), frontier.end(), compareNodeOrder);
+
+    QVector<int> layer(nodes.size(), 0);
+    QVector<bool> processed(nodes.size(), false);
+
+    int head = 0;
+    int processedCount = 0;
+    while (head < frontier.size()) {
+        const int current = frontier[head++];
+        if (processed[current]) {
+            continue;
+        }
+        processed[current] = true;
+        ++processedCount;
+
+        for (int next : outgoing[current]) {
+            layer[next] = std::max(layer[next], layer[current] + 1);
+            --indegree[next];
+            if (indegree[next] == 0) {
+                frontier.push_back(next);
+            }
+        }
+    }
+
+    int maxLayer = 0;
+    for (int value : layer) {
+        maxLayer = std::max(maxLayer, value);
+    }
+
+    if (processedCount < nodes.size()) {
+        QVector<int> remaining;
+        remaining.reserve(nodes.size() - processedCount);
+        for (int i = 0; i < processed.size(); ++i) {
+            if (!processed[i]) {
+                remaining.push_back(i);
+            }
+        }
+        std::sort(remaining.begin(), remaining.end(), compareNodeOrder);
+        for (int i = 0; i < remaining.size(); ++i) {
+            layer[remaining[i]] = maxLayer + i + 1;
+        }
+    }
+
+    QMap<int, QVector<int>> layerBuckets;
+    for (int i = 0; i < layer.size(); ++i) {
+        layerBuckets[layer[i]].push_back(i);
+    }
+
+    constexpr qreal kLayerXSpacing = 240.0;
+    constexpr qreal kLayerYSpacing = 140.0;
+
+    QVector<QPointF> targetPositions(nodes.size(), QPointF());
+    QRectF newBounds;
+    bool newBoundsInitialized = false;
+
+    int column = 0;
+    for (auto it = layerBuckets.begin(); it != layerBuckets.end(); ++it, ++column) {
+        QVector<int>& bucket = it.value();
+        std::sort(bucket.begin(), bucket.end(), compareNodeOrder);
+        for (int row = 0; row < bucket.size(); ++row) {
+            const int nodeIdx = bucket[row];
+            const QPointF target(column * kLayerXSpacing, row * kLayerYSpacing);
+            targetPositions[nodeIdx] = target;
+
+            const QRectF nodeRect(target, nodes[nodeIdx]->nodeSize());
+            newBounds = newBoundsInitialized ? newBounds.united(nodeRect) : nodeRect;
+            newBoundsInitialized = true;
+        }
+    }
+
+    if (!newBoundsInitialized) {
+        return false;
+    }
+
+    const QPointF translation = oldBounds.center() - newBounds.center();
+    bool changed = false;
+    for (int i = 0; i < nodes.size(); ++i) {
+        QPointF finalPos = targetPositions[i] + translation;
+        if (m_snapToGrid) {
+            finalPos = snapPoint(finalPos);
+        }
+        if (nodes[i]->pos() == finalPos) {
+            continue;
+        }
+        nodes[i]->setPos(finalPos);
+        changed = true;
+    }
+
+    if (!changed) {
+        return false;
+    }
+
+    emit graphChanged();
+    if (!selectedItems().isEmpty()) {
+        onSelectionChangedInternal();
+    }
+    return true;
 }
 
 void EditorScene::finishConnectionAt(const QPointF& scenePos, PortItem* explicitTarget) {

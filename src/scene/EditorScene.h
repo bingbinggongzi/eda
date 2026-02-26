@@ -25,6 +25,7 @@ class EditorScene : public QGraphicsScene {
 
 public:
     explicit EditorScene(QObject* parent = nullptr);
+    ~EditorScene() override;
 
     NodeItem* createNode(const QString& typeName, const QPointF& scenePos);
     EdgeItem* createEdge(PortItem* outputPort, PortItem* inputPort);
@@ -35,6 +36,7 @@ public:
     bool renameNodeWithUndo(const QString& nodeId, const QString& newName);
     bool moveNodeWithUndo(const QString& nodeId, const QPointF& newPos);
     bool setNodePropertyWithUndo(const QString& nodeId, const QString& key, const QString& value);
+    bool autoLayoutWithUndo(bool selectedOnly = true);
 
     NodeItem* createNodeFromData(const NodeData& nodeData);
     EdgeItem* createEdgeFromData(const EdgeData& edgeData);
@@ -92,6 +94,8 @@ private:
     bool hasEdgeBetweenPorts(PortItem* outputPort, PortItem* inputPort) const;
     bool inputPortHasConnection(PortItem* inputPort) const;
     PortItem* pickPortAt(const QPointF& scenePos) const;
+    QVector<NodeItem*> collectLayoutNodes(bool selectedOnly) const;
+    bool applyAutoLayout(const QVector<NodeItem*>& nodes);
     void finishConnectionAt(const QPointF& scenePos, PortItem* explicitTarget = nullptr);
     NodeItem* buildNodeByType(const QString& typeName);
     NodeItem* buildNode(const QString& nodeId,

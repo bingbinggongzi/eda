@@ -21,6 +21,7 @@ Last updated: 2026-02-25
 - [ ] Node has input/output ports
 - [ ] Drag from one port to another creates an edge
 - [ ] Moving a node updates connected edges
+- [ ] Trigger `Edit -> Auto Layout` and verify selected nodes (or full graph) are rearranged
 
 ## Panels
 

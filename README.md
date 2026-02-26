@@ -21,6 +21,7 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Palette drag-drop visual feedback (drop preview box + guide lines)
 - Lifecycle regression tests for `New/Open/Save As/Close` and unsaved prompt decisions
 - UI snapshot regression tests with golden images and pixel-tolerance compare
+- One-click auto layout (`Edit -> Auto Layout`) for selected nodes or full graph fallback
 
 ## Requirements
 

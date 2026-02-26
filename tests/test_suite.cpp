@@ -239,6 +239,7 @@ private slots:
     void undoRedoSmoke();
     void edgeConnectionRules();
     void granularCommandMerge();
+    void autoLayoutUndoAndSelection();
     void obstacleRoutingToggle();
     void obstacleRoutingDirectionalBias();
     void toolboxMimeDropAccepted();
@@ -490,6 +491,59 @@ void EdaSuite::granularCommandMerge() {
     node = findNodeById(scene, nodeId);
     QVERIFY(node != nullptr);
     QCOMPARE(node->pos(), QPointF(0.0, 0.0));
+}
+
+void EdaSuite::autoLayoutUndoAndSelection() {
+    {
+        EditorScene scene;
+        scene.setSnapToGrid(false);
+        QUndoStack undoStack;
+        scene.setUndoStack(&undoStack);
+
+        NodeItem* n1 = scene.createNode(QStringLiteral("tm_Node"), QPointF(580.0, 360.0));
+        NodeItem* n2 = scene.createNode(QStringLiteral("tm_Node"), QPointF(180.0, 120.0));
+        NodeItem* n3 = scene.createNode(QStringLiteral("tm_Node"), QPointF(360.0, 480.0));
+        QVERIFY(n1 != nullptr);
+        QVERIFY(n2 != nullptr);
+        QVERIFY(n3 != nullptr);
+
+        QVERIFY(scene.createEdge(n2->firstOutputPort(), n1->firstInputPort()) != nullptr);
+        QVERIFY(scene.createEdge(n1->firstOutputPort(), n3->firstInputPort()) != nullptr);
+
+        const QPointF p1Before = n1->pos();
+        const QPointF p2Before = n2->pos();
+        const QPointF p3Before = n3->pos();
+
+        QVERIFY(scene.autoLayoutWithUndo(true));
+        QCOMPARE(undoStack.count(), 1);
+        QVERIFY(n2->pos().x() < n1->pos().x());
+        QVERIFY(n1->pos().x() < n3->pos().x());
+        QVERIFY(n1->pos() != p1Before || n2->pos() != p2Before || n3->pos() != p3Before);
+    }
+
+    {
+        EditorScene scene;
+        scene.setSnapToGrid(false);
+        QUndoStack undoStack;
+        scene.setUndoStack(&undoStack);
+
+        NodeItem* a = scene.createNode(QStringLiteral("tm_Node"), QPointF(620.0, 320.0));
+        NodeItem* b = scene.createNode(QStringLiteral("tm_Node"), QPointF(260.0, 420.0));
+        NodeItem* c = scene.createNode(QStringLiteral("tm_Node"), QPointF(120.0, 80.0));
+        QVERIFY(a != nullptr);
+        QVERIFY(b != nullptr);
+        QVERIFY(c != nullptr);
+
+        scene.createEdge(a->firstOutputPort(), b->firstInputPort());
+
+        const QPointF cBefore = c->pos();
+        a->setSelected(true);
+        b->setSelected(true);
+
+        QVERIFY(scene.autoLayoutWithUndo(true));
+        QCOMPARE(c->pos(), cBefore);
+        QCOMPARE(undoStack.count(), 1);
+    }
 }
 
 void EdaSuite::obstacleRoutingToggle() {
