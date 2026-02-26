@@ -209,6 +209,8 @@ Acceptance:
 - File lifecycle regression tests added (`New/Open/Save As/Close` + dirty prompt branches)
 - UI snapshot regression framework added (golden images + tolerance compare + diff artifacts)
 - One-click auto layout added (selected nodes or whole graph fallback) with undo integration
+- Node transform controls added (rotate, bring front/back, step forward/backward) with undo + persistence
+- Group/Ungroup flow added with undo + persistence and grouped selection behavior
 
 ## 7. Current Execution Queue (Next Up)
 

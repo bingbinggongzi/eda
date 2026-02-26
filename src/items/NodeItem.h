@@ -28,6 +28,8 @@ public:
     const QString& displayName() const;
     const QSizeF& nodeSize() const;
     void setDisplayName(const QString& name);
+    const QString& groupId() const;
+    void setGroupId(const QString& groupId);
 
     PortItem* addPort(const QString& portId, const QString& name, PortDirection direction);
     const QVector<PortItem*>& inputPorts() const;
@@ -61,5 +63,6 @@ private:
     QVector<PortItem*> m_inputPorts;
     QVector<PortItem*> m_outputPorts;
     QVector<PropertyData> m_properties;
+    QString m_groupId;
     QPointF m_dragStartPos;
 };

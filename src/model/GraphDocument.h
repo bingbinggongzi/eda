@@ -27,6 +27,7 @@ struct NodeData {
     QVector<PropertyData> properties;
     qreal rotationDegrees = 0.0;
     qreal z = 1.0;
+    QString groupId;
 };
 
 struct EdgeData {

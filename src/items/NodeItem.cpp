@@ -72,6 +72,14 @@ void NodeItem::setDisplayName(const QString& name) {
     update();
 }
 
+const QString& NodeItem::groupId() const {
+    return m_groupId;
+}
+
+void NodeItem::setGroupId(const QString& groupId) {
+    m_groupId = groupId;
+}
+
 PortItem* NodeItem::addPort(const QString& portId, const QString& name, PortDirection direction) {
     PortItem* port = new PortItem(portId, name, direction, this, this);
     if (direction == PortDirection::Input) {
@@ -140,7 +148,7 @@ bool NodeItem::setPropertyValue(const QString& key, const QString& value) {
 
 QVariant NodeItem::itemChange(GraphicsItemChange change, const QVariant& value) {
     if (change == QGraphicsItem::ItemPositionHasChanged || change == QGraphicsItem::ItemRotationHasChanged ||
-        change == QGraphicsItem::ItemTransformHasChanged) {
+        change == QGraphicsItem::ItemTransformHasChanged || change == QGraphicsItem::ItemScenePositionHasChanged) {
         for (PortItem* port : m_inputPorts) {
             if (port) {
                 port->updateConnectedEdges();

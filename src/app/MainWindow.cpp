@@ -204,6 +204,11 @@ void MainWindow::setupMenusAndToolbar() {
     QAction* autoLayoutAction = editMenu->addAction(QStringLiteral("Auto Layout"));
     autoLayoutAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+L")));
     editMenu->addSeparator();
+    QAction* groupAction = editMenu->addAction(QStringLiteral("Group"));
+    groupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
+    QAction* ungroupAction = editMenu->addAction(QStringLiteral("Ungroup"));
+    ungroupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+G")));
+    editMenu->addSeparator();
     QAction* rotateCwAction = editMenu->addAction(QStringLiteral("Rotate +90"));
     rotateCwAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));
     QAction* rotateCcwAction = editMenu->addAction(QStringLiteral("Rotate -90"));
@@ -231,6 +236,8 @@ void MainWindow::setupMenusAndToolbar() {
     toolBar->addSeparator();
     toolBar->addAction(clearAction);
     toolBar->addAction(autoLayoutAction);
+    toolBar->addAction(groupAction);
+    toolBar->addAction(ungroupAction);
     toolBar->addAction(rotateCwAction);
     toolBar->addAction(rotateCcwAction);
     toolBar->addSeparator();
@@ -286,6 +293,28 @@ void MainWindow::setupMenusAndToolbar() {
             return;
         }
         statusBar()->showMessage(QStringLiteral("Auto layout skipped"), 1200);
+    });
+
+    connect(groupAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->groupSelectionWithUndo()) {
+            statusBar()->showMessage(QStringLiteral("Group created"), 1200);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Group skipped"), 1200);
+        }
+    });
+
+    connect(ungroupAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->ungroupSelectionWithUndo()) {
+            statusBar()->showMessage(QStringLiteral("Group removed"), 1200);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Ungroup skipped"), 1200);
+        }
     });
 
     connect(rotateCwAction, &QAction::triggered, this, [this]() {

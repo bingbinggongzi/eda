@@ -26,6 +26,9 @@ QJsonObject toJson(const NodeData& node) {
     o[QStringLiteral("h")] = node.size.height();
     o[QStringLiteral("rotation")] = node.rotationDegrees;
     o[QStringLiteral("z")] = node.z;
+    if (!node.groupId.isEmpty()) {
+        o[QStringLiteral("groupId")] = node.groupId;
+    }
 
     QJsonArray ports;
     for (const PortData& p : node.ports) {
@@ -77,6 +80,7 @@ bool fromJson(const QJsonObject& o, NodeData* out) {
     out->size = QSizeF(o.value(QStringLiteral("w")).toDouble(120.0), o.value(QStringLiteral("h")).toDouble(72.0));
     out->rotationDegrees = o.value(QStringLiteral("rotation")).toDouble(0.0);
     out->z = o.value(QStringLiteral("z")).toDouble(1.0);
+    out->groupId = o.value(QStringLiteral("groupId")).toString();
     out->ports.clear();
     out->properties.clear();
 

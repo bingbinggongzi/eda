@@ -4,6 +4,7 @@
 #include "model/GraphDocument.h"
 
 #include <QGraphicsScene>
+#include <QHash>
 #include <QPointF>
 #include <QString>
 
@@ -13,6 +14,7 @@ class PortItem;
 class NodeMoveCommand;
 class NodeRenameCommand;
 class NodePropertyCommand;
+class QGraphicsItemGroup;
 
 enum class InteractionMode {
     Select,
@@ -42,6 +44,8 @@ public:
     bool sendSelectionToBackWithUndo();
     bool bringSelectionForwardWithUndo();
     bool sendSelectionBackwardWithUndo();
+    bool groupSelectionWithUndo();
+    bool ungroupSelectionWithUndo();
 
     NodeItem* createNodeFromData(const NodeData& nodeData);
     EdgeItem* createEdgeFromData(const EdgeData& edgeData);
@@ -89,7 +93,11 @@ private:
     QString nextNodeId();
     QString nextPortId();
     QString nextEdgeId();
+    QString nextGroupId();
     void updateCounterFromId(const QString& id, int* counter);
+    void rebuildNodeGroups();
+    void clearNodeGroups();
+    QGraphicsItemGroup* owningGroupItem(QGraphicsItem* item) const;
     QPointF snapPoint(const QPointF& p) const;
     NodeItem* findNodeByIdInternal(const QString& nodeId) const;
     bool applyNodeRenameInternal(const QString& nodeId, const QString& newName, bool emitGraphChanged);
@@ -114,10 +122,16 @@ private:
     int m_nodeCounter = 1;
     int m_portCounter = 1;
     int m_edgeCounter = 1;
+    int m_groupCounter = 1;
     bool m_snapToGrid = true;
 
     PortItem* m_pendingPort = nullptr;
     EdgeItem* m_previewEdge = nullptr;
+    QHash<QString, QGraphicsItemGroup*> m_nodeGroups;
+    QGraphicsItemGroup* m_draggingGroup = nullptr;
+    QPointF m_draggingGroupStartPos;
+    GraphDocument m_draggingGroupBefore;
+    bool m_draggingGroupTracked = false;
     QUndoStack* m_undoStack = nullptr;
     InteractionMode m_mode = InteractionMode::Select;
     QString m_placementType;

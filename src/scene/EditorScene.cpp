@@ -11,6 +11,7 @@
 #include <cmath>
 
 #include <QGraphicsSceneMouseEvent>
+#include <QGraphicsItemGroup>
 #include <QGraphicsView>
 #include <QMap>
 #include <QRegularExpression>
@@ -30,7 +31,7 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
     auto sameNode = [&](const NodeData& n1, const NodeData& n2) {
         if (n1.id != n2.id || n1.type != n2.type || n1.name != n2.name || n1.position != n2.position || n1.size != n2.size ||
             !qFuzzyCompare(n1.rotationDegrees + 1.0, n2.rotationDegrees + 1.0) ||
-            !qFuzzyCompare(n1.z + 1.0, n2.z + 1.0) || n1.ports.size() != n2.ports.size() ||
+            !qFuzzyCompare(n1.z + 1.0, n2.z + 1.0) || n1.groupId != n2.groupId || n1.ports.size() != n2.ports.size() ||
             n1.properties.size() != n2.properties.size()) {
             return false;
         }
@@ -107,9 +108,13 @@ NodeItem* EditorScene::createNodeFromData(const NodeData& nodeData) {
     node->setPos(nodeData.position);
     node->setRotation(nodeData.rotationDegrees);
     node->setZValue(nodeData.z);
+    node->setGroupId(nodeData.groupId);
     addItem(node);
 
     updateCounterFromId(nodeData.id, &m_nodeCounter);
+    if (!nodeData.groupId.isEmpty()) {
+        updateCounterFromId(nodeData.groupId, &m_groupCounter);
+    }
     for (const PortData& port : nodeData.ports) {
         updateCounterFromId(port.id, &m_portCounter);
     }
@@ -447,22 +452,95 @@ bool EditorScene::sendSelectionBackwardWithUndo() {
     return true;
 }
 
+bool EditorScene::groupSelectionWithUndo() {
+    const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
+    if (selectedNodes.size() < 2) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    const QString groupId = nextGroupId();
+    for (NodeItem* node : selectedNodes) {
+        if (node) {
+            node->setGroupId(groupId);
+        }
+    }
+
+    rebuildNodeGroups();
+    clearSelection();
+    if (QGraphicsItemGroup* groupItem = m_nodeGroups.value(groupId, nullptr)) {
+        groupItem->setSelected(true);
+    }
+    emit graphChanged();
+    onSelectionChangedInternal();
+
+    if (!m_undoStack) {
+        return true;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Group"), true));
+    }
+    return true;
+}
+
+bool EditorScene::ungroupSelectionWithUndo() {
+    const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
+    QSet<QString> targetGroupIds;
+    for (NodeItem* node : selectedNodes) {
+        if (node && !node->groupId().isEmpty()) {
+            targetGroupIds.insert(node->groupId());
+        }
+    }
+    if (targetGroupIds.isEmpty()) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    bool changed = false;
+    for (QGraphicsItem* item : items()) {
+        NodeItem* node = dynamic_cast<NodeItem*>(item);
+        if (!node || !targetGroupIds.contains(node->groupId())) {
+            continue;
+        }
+        node->setGroupId(QString());
+        changed = true;
+    }
+    if (!changed) {
+        return false;
+    }
+
+    rebuildNodeGroups();
+    emit graphChanged();
+    onSelectionChangedInternal();
+
+    if (!m_undoStack) {
+        return true;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Ungroup"), true));
+    }
+    return true;
+}
+
 void EditorScene::deleteSelectionWithUndo() {
     const QList<QGraphicsItem*> selected = selectedItems();
-    if (selected.isEmpty()) {
+    const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
+    if (selected.isEmpty() && selectedNodes.isEmpty()) {
         return;
     }
 
     const GraphDocument before = toDocument();
 
     QSet<QString> deletedNodeIds;
-    for (QGraphicsItem* item : selected) {
-        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+    for (NodeItem* node : selectedNodes) {
+        if (node) {
             deletedNodeIds.insert(node->nodeId());
         }
     }
 
-    QList<QGraphicsItem*> toDelete;
+    QSet<QGraphicsItem*> toDelete;
     for (QGraphicsItem* item : items()) {
         if (EdgeItem* edge = dynamic_cast<EdgeItem*>(item)) {
             if (!edge->sourcePort() || !edge->targetPort()) {
@@ -472,19 +550,28 @@ void EditorScene::deleteSelectionWithUndo() {
             const NodeItem* toNode = edge->targetPort()->ownerNode();
             if ((fromNode && deletedNodeIds.contains(fromNode->nodeId())) ||
                 (toNode && deletedNodeIds.contains(toNode->nodeId())) || edge->isSelected()) {
-                toDelete.push_back(edge);
+                toDelete.insert(edge);
             }
         }
     }
-    for (QGraphicsItem* item : selected) {
-        if (dynamic_cast<NodeItem*>(item)) {
-            toDelete.push_back(item);
+    for (NodeItem* node : selectedNodes) {
+        if (node) {
+            toDelete.insert(node);
+        }
+    }
+
+    const QList<QGraphicsItem*> toDeleteList = toDelete.values();
+    for (QGraphicsItem* item : toDeleteList) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            m_nodeGroups.remove(node->groupId());
         }
     }
     for (QGraphicsItem* item : toDelete) {
         removeItem(item);
         delete item;
     }
+
+    rebuildNodeGroups();
 
     emit graphChanged();
 
@@ -532,11 +619,16 @@ void EditorScene::clearGraph() {
         m_previewEdge = nullptr;
     }
     m_pendingPort = nullptr;
+    m_draggingGroup = nullptr;
+    m_draggingGroupTracked = false;
+
+    clearNodeGroups();
 
     clear();
     m_nodeCounter = 1;
     m_portCounter = 1;
     m_edgeCounter = 1;
+    m_groupCounter = 1;
     emit graphChanged();
 }
 
@@ -554,6 +646,7 @@ GraphDocument EditorScene::toDocument() const {
             nodeData.size = node->nodeSize();
             nodeData.rotationDegrees = node->rotation();
             nodeData.z = node->zValue();
+            nodeData.groupId = node->groupId();
 
             for (PortItem* port : node->inputPorts()) {
                 PortData p;
@@ -613,6 +706,8 @@ bool EditorScene::fromDocument(const GraphDocument& document) {
         createEdgeFromData(edge);
     }
 
+    rebuildNodeGroups();
+
     emit graphChanged();
     return true;
 }
@@ -669,6 +764,20 @@ EdgeRoutingMode EditorScene::edgeRoutingMode() const {
 }
 
 void EditorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
+    m_draggingGroup = nullptr;
+    m_draggingGroupTracked = false;
+    if (event->button() == Qt::LeftButton) {
+        const QTransform viewTransform = views().isEmpty() ? QTransform() : views().first()->transform();
+        if (QGraphicsItemGroup* group = owningGroupItem(itemAt(event->scenePos(), viewTransform))) {
+            m_draggingGroup = group;
+            m_draggingGroupStartPos = group->scenePos();
+            if (m_undoStack) {
+                m_draggingGroupBefore = toDocument();
+                m_draggingGroupTracked = true;
+            }
+        }
+    }
+
     if (event->button() == Qt::LeftButton && m_mode == InteractionMode::Place && !m_placementType.isEmpty()) {
         createNodeWithUndo(m_placementType, event->scenePos());
         event->accept();
@@ -685,12 +794,34 @@ void EditorScene::mouseMoveEvent(QGraphicsSceneMouseEvent* event) {
 }
 
 void EditorScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
+    bool connectionHandled = false;
     if (event->button() == Qt::LeftButton && m_pendingPort) {
         finishConnectionAt(event->scenePos());
         event->accept();
+        connectionHandled = true;
+    } else {
+        QGraphicsScene::mouseReleaseEvent(event);
+    }
+
+    if (event->button() == Qt::LeftButton && m_draggingGroup) {
+        const bool moved = m_draggingGroup->scenePos() != m_draggingGroupStartPos;
+        if (moved) {
+            emit graphChanged();
+            if (m_undoStack && m_draggingGroupTracked) {
+                const GraphDocument after = toDocument();
+                if (!areDocumentsEquivalent(m_draggingGroupBefore, after)) {
+                    m_undoStack->push(
+                        new DocumentStateCommand(this, m_draggingGroupBefore, after, QStringLiteral("Move Group"), true));
+                }
+            }
+        }
+    }
+    m_draggingGroup = nullptr;
+    m_draggingGroupTracked = false;
+
+    if (connectionHandled) {
         return;
     }
-    QGraphicsScene::mouseReleaseEvent(event);
 }
 
 void EditorScene::onPortConnectionStart(PortItem* port) {
@@ -781,6 +912,10 @@ QString EditorScene::nextPortId() {
 
 QString EditorScene::nextEdgeId() {
     return QStringLiteral("E_%1").arg(m_edgeCounter++);
+}
+
+QString EditorScene::nextGroupId() {
+    return QStringLiteral("G_%1").arg(m_groupCounter++);
 }
 
 void EditorScene::updateCounterFromId(const QString& id, int* counter) {
@@ -940,11 +1075,28 @@ PortItem* EditorScene::pickPortAt(const QPointF& scenePos) const {
 
 QVector<NodeItem*> EditorScene::collectSelectedNodes() const {
     QVector<NodeItem*> selectedNodes;
+    QSet<QString> seenNodeIds;
     const QList<QGraphicsItem*> selected = selectedItems();
     selectedNodes.reserve(selected.size());
+
+    auto appendNode = [&selectedNodes, &seenNodeIds](NodeItem* node) {
+        if (!node || seenNodeIds.contains(node->nodeId())) {
+            return;
+        }
+        selectedNodes.push_back(node);
+        seenNodeIds.insert(node->nodeId());
+    };
+
     for (QGraphicsItem* item : selected) {
         if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
-            selectedNodes.push_back(node);
+            appendNode(node);
+            continue;
+        }
+        if (QGraphicsItemGroup* group = dynamic_cast<QGraphicsItemGroup*>(item)) {
+            const QList<QGraphicsItem*> children = group->childItems();
+            for (QGraphicsItem* child : children) {
+                appendNode(dynamic_cast<NodeItem*>(child));
+            }
         }
     }
     std::sort(selectedNodes.begin(),
@@ -956,13 +1108,7 @@ QVector<NodeItem*> EditorScene::collectSelectedNodes() const {
 QVector<NodeItem*> EditorScene::collectLayoutNodes(bool selectedOnly) const {
     QVector<NodeItem*> selectedNodes;
     if (selectedOnly) {
-        const QList<QGraphicsItem*> selected = selectedItems();
-        selectedNodes.reserve(selected.size());
-        for (QGraphicsItem* item : selected) {
-            if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
-                selectedNodes.push_back(node);
-            }
-        }
+        selectedNodes = collectSelectedNodes();
     }
 
     QVector<NodeItem*> nodes;
@@ -980,6 +1126,89 @@ QVector<NodeItem*> EditorScene::collectLayoutNodes(bool selectedOnly) const {
 
     std::sort(nodes.begin(), nodes.end(), [](const NodeItem* a, const NodeItem* b) { return a->nodeId() < b->nodeId(); });
     return nodes;
+}
+
+void EditorScene::clearNodeGroups() {
+    const QList<QGraphicsItemGroup*> groups = m_nodeGroups.values();
+    for (QGraphicsItemGroup* group : groups) {
+        if (!group) {
+            continue;
+        }
+        const QList<QGraphicsItem*> children = group->childItems();
+        for (QGraphicsItem* child : children) {
+            if (child) {
+                child->setParentItem(nullptr);
+            }
+        }
+        if (group->scene() == this) {
+            removeItem(group);
+        }
+        delete group;
+    }
+    m_nodeGroups.clear();
+    m_draggingGroup = nullptr;
+    m_draggingGroupTracked = false;
+}
+
+void EditorScene::rebuildNodeGroups() {
+    clearNodeGroups();
+
+    QHash<QString, QVector<NodeItem*>> groupedNodes;
+    for (QGraphicsItem* item : items()) {
+        NodeItem* node = dynamic_cast<NodeItem*>(item);
+        if (!node || node->groupId().isEmpty()) {
+            continue;
+        }
+        groupedNodes[node->groupId()].push_back(node);
+    }
+
+    for (auto it = groupedNodes.begin(); it != groupedNodes.end();) {
+        if (it.value().size() < 2) {
+            for (NodeItem* node : it.value()) {
+                if (node) {
+                    node->setGroupId(QString());
+                }
+            }
+            it = groupedNodes.erase(it);
+            continue;
+        }
+        std::sort(it.value().begin(), it.value().end(), [](const NodeItem* a, const NodeItem* b) {
+            return a->nodeId() < b->nodeId();
+        });
+        ++it;
+    }
+
+    for (auto it = groupedNodes.begin(); it != groupedNodes.end(); ++it) {
+        const QString& groupId = it.key();
+        const QVector<NodeItem*>& nodes = it.value();
+        QList<QGraphicsItem*> members;
+        members.reserve(nodes.size());
+        for (NodeItem* node : nodes) {
+            members.push_back(node);
+        }
+
+        QGraphicsItemGroup* group = createItemGroup(members);
+        group->setHandlesChildEvents(true);
+        group->setFlag(QGraphicsItem::ItemIsSelectable, true);
+        group->setFlag(QGraphicsItem::ItemIsMovable, true);
+        group->setData(0, groupId);
+        m_nodeGroups.insert(groupId, group);
+        updateCounterFromId(groupId, &m_groupCounter);
+    }
+}
+
+QGraphicsItemGroup* EditorScene::owningGroupItem(QGraphicsItem* item) const {
+    QGraphicsItem* cursor = item;
+    const QList<QGraphicsItemGroup*> groups = m_nodeGroups.values();
+    while (cursor) {
+        if (QGraphicsItemGroup* group = dynamic_cast<QGraphicsItemGroup*>(cursor)) {
+            if (groups.contains(group)) {
+                return group;
+            }
+        }
+        cursor = cursor->parentItem();
+    }
+    return nullptr;
 }
 
 bool EditorScene::applyAutoLayout(const QVector<NodeItem*>& nodes) {

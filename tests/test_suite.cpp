@@ -13,6 +13,7 @@
 #include <QImage>
 #include <QPainter>
 #include <QPainterPath>
+#include <QGraphicsItemGroup>
 #include <QMimeData>
 #include <QSignalSpy>
 #include <QStatusBar>
@@ -241,6 +242,7 @@ private slots:
     void granularCommandMerge();
     void autoLayoutUndoAndSelection();
     void rotateAndLayerUndo();
+    void groupUngroupUndo();
     void obstacleRoutingToggle();
     void obstacleRoutingDirectionalBias();
     void toolboxMimeDropAccepted();
@@ -264,7 +266,8 @@ void EdaSuite::serializerRoundtrip() {
                                   PortData{QStringLiteral("P_2"), QStringLiteral("out1"), QStringLiteral("output")}},
                                  {PropertyData{QStringLiteral("vote_required"), QStringLiteral("int"), QStringLiteral("2")}},
                                  15.0,
-                                 3.0});
+                                 3.0,
+                                 QStringLiteral("G_1")});
     src.nodes.push_back(NodeData{QStringLiteral("N_2"),
                                  QStringLiteral("Sum"),
                                  QStringLiteral("SumA"),
@@ -274,7 +277,8 @@ void EdaSuite::serializerRoundtrip() {
                                   PortData{QStringLiteral("P_4"), QStringLiteral("out1"), QStringLiteral("output")}},
                                  {PropertyData{QStringLiteral("bias"), QStringLiteral("double"), QStringLiteral("0.0")}},
                                  -30.0,
-                                 1.0});
+                                 1.0,
+                                 QStringLiteral("G_1")});
     src.edges.push_back(EdgeData{QStringLiteral("E_1"),
                                  QStringLiteral("N_1"),
                                  QStringLiteral("P_2"),
@@ -301,6 +305,7 @@ void EdaSuite::serializerRoundtrip() {
     QCOMPARE(dst.nodes[0].properties[0].key, src.nodes[0].properties[0].key);
     QCOMPARE(dst.nodes[0].rotationDegrees, src.nodes[0].rotationDegrees);
     QCOMPARE(dst.nodes[0].z, src.nodes[0].z);
+    QCOMPARE(dst.nodes[0].groupId, src.nodes[0].groupId);
     QCOMPARE(dst.edges[0].fromPortId, src.edges[0].fromPortId);
 }
 
@@ -368,6 +373,8 @@ void EdaSuite::sceneRoundtrip() {
     QVERIFY(n2 != nullptr);
     n1->setRotation(30.0);
     n1->setZValue(5.0);
+    n1->setGroupId(QStringLiteral("G_1"));
+    n2->setGroupId(QStringLiteral("G_1"));
     QVERIFY(scene.createEdge(n1->firstOutputPort(), n2->firstInputPort()) != nullptr);
 
     GraphDocument doc = scene.toDocument();
@@ -379,9 +386,13 @@ void EdaSuite::sceneRoundtrip() {
     QCOMPARE(countNodes(loaded), 2);
     QCOMPARE(countEdges(loaded), 1);
     NodeItem* loadedN1 = findNodeById(loaded, n1->nodeId());
+    NodeItem* loadedN2 = findNodeById(loaded, n2->nodeId());
     QVERIFY(loadedN1 != nullptr);
+    QVERIFY(loadedN2 != nullptr);
     QCOMPARE(loadedN1->rotation(), 30.0);
     QCOMPARE(loadedN1->zValue(), 5.0);
+    QCOMPARE(loadedN1->groupId(), QStringLiteral("G_1"));
+    QCOMPARE(loadedN2->groupId(), QStringLiteral("G_1"));
 }
 
 void EdaSuite::undoRedoSmoke() {
@@ -606,6 +617,77 @@ void EdaSuite::rotateAndLayerUndo() {
     QVERIFY(scene.sendSelectionBackwardWithUndo());
     QCOMPARE(undoStack.count(), 5);
     QCOMPARE(n1->zValue(), z1);
+}
+
+void EdaSuite::groupUngroupUndo() {
+    EditorScene scene;
+    scene.setSnapToGrid(false);
+    QUndoStack undoStack;
+    scene.setUndoStack(&undoStack);
+
+    NodeItem* a = scene.createNode(QStringLiteral("tm_Node"), QPointF(140.0, 120.0));
+    NodeItem* b = scene.createNode(QStringLiteral("tm_Node"), QPointF(340.0, 120.0));
+    NodeItem* c = scene.createNode(QStringLiteral("tm_Node"), QPointF(560.0, 120.0));
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+    QVERIFY(c != nullptr);
+    const QString aId = a->nodeId();
+    const QString bId = b->nodeId();
+
+    a->setSelected(true);
+    b->setSelected(true);
+    QVERIFY(scene.groupSelectionWithUndo());
+    QCOMPARE(undoStack.count(), 1);
+    QVERIFY(!a->groupId().isEmpty());
+    QCOMPARE(a->groupId(), b->groupId());
+    QVERIFY(c->groupId().isEmpty());
+
+    QGraphicsItemGroup* selectedGroup = nullptr;
+    for (QGraphicsItem* item : scene.selectedItems()) {
+        if (auto* group = dynamic_cast<QGraphicsItemGroup*>(item)) {
+            selectedGroup = group;
+            break;
+        }
+    }
+    QVERIFY(selectedGroup != nullptr);
+
+    const qreal aRotationBefore = a->rotation();
+    const qreal bRotationBefore = b->rotation();
+    QVERIFY(scene.rotateSelectionWithUndo(90.0));
+    QCOMPARE(undoStack.count(), 2);
+    QCOMPARE(a->rotation(), aRotationBefore + 90.0);
+    QCOMPARE(b->rotation(), bRotationBefore + 90.0);
+
+    const GraphDocument groupedDoc = scene.toDocument();
+    EditorScene loaded;
+    QVERIFY(loaded.fromDocument(groupedDoc));
+    NodeItem* loadedA = findNodeById(loaded, a->nodeId());
+    NodeItem* loadedB = findNodeById(loaded, b->nodeId());
+    QVERIFY(loadedA != nullptr);
+    QVERIFY(loadedB != nullptr);
+    QVERIFY(!loadedA->groupId().isEmpty());
+    QCOMPARE(loadedA->groupId(), loadedB->groupId());
+
+    QVERIFY(scene.ungroupSelectionWithUndo());
+    QCOMPARE(undoStack.count(), 3);
+    QVERIFY(a->groupId().isEmpty());
+    QVERIFY(b->groupId().isEmpty());
+
+    undoStack.undo();
+    a = findNodeById(scene, aId);
+    b = findNodeById(scene, bId);
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+    QVERIFY(!a->groupId().isEmpty());
+    QCOMPARE(a->groupId(), b->groupId());
+
+    undoStack.undo();
+    a = findNodeById(scene, aId);
+    b = findNodeById(scene, bId);
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+    QCOMPARE(a->rotation(), aRotationBefore);
+    QCOMPARE(b->rotation(), bRotationBefore);
 }
 
 void EdaSuite::obstacleRoutingToggle() {
