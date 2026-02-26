@@ -110,6 +110,12 @@ EdgeItem* EditorScene::createEdge(PortItem* outputPort, PortItem* inputPort) {
     if (!outputPort || !inputPort) {
         return nullptr;
     }
+    if (outputPort->direction() != PortDirection::Output || inputPort->direction() != PortDirection::Input) {
+        return nullptr;
+    }
+    if (!canConnect(outputPort, inputPort)) {
+        return nullptr;
+    }
 
     EdgeItem* edge = new EdgeItem(nextEdgeId(), outputPort);
     edge->setRoutingMode(m_edgeRoutingMode);
@@ -618,7 +624,56 @@ bool EditorScene::canConnect(PortItem* a, PortItem* b) const {
     if (a->ownerNode() == b->ownerNode()) {
         return false;
     }
-    return a->direction() != b->direction();
+
+    PortItem* outputPort = nullptr;
+    PortItem* inputPort = nullptr;
+    if (a->direction() == PortDirection::Output && b->direction() == PortDirection::Input) {
+        outputPort = a;
+        inputPort = b;
+    } else if (a->direction() == PortDirection::Input && b->direction() == PortDirection::Output) {
+        outputPort = b;
+        inputPort = a;
+    } else {
+        return false;
+    }
+
+    if (hasEdgeBetweenPorts(outputPort, inputPort)) {
+        return false;
+    }
+    if (inputPortHasConnection(inputPort)) {
+        return false;
+    }
+    return true;
+}
+
+bool EditorScene::hasEdgeBetweenPorts(PortItem* outputPort, PortItem* inputPort) const {
+    if (!outputPort || !inputPort) {
+        return false;
+    }
+
+    for (QGraphicsItem* item : items()) {
+        if (EdgeItem* edge = dynamic_cast<EdgeItem*>(item)) {
+            if (edge->sourcePort() == outputPort && edge->targetPort() == inputPort) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool EditorScene::inputPortHasConnection(PortItem* inputPort) const {
+    if (!inputPort) {
+        return false;
+    }
+
+    for (QGraphicsItem* item : items()) {
+        if (EdgeItem* edge = dynamic_cast<EdgeItem*>(item)) {
+            if (edge->targetPort() == inputPort && edge->sourcePort()) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 PortItem* EditorScene::pickPortAt(const QPointF& scenePos) const {

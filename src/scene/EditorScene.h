@@ -89,6 +89,8 @@ private:
     bool applyNodePositionInternal(const QString& nodeId, const QPointF& newPos, bool emitGraphChanged);
     bool applyNodePropertyInternal(const QString& nodeId, const QString& key, const QString& value, bool emitGraphChanged);
     bool canConnect(PortItem* a, PortItem* b) const;
+    bool hasEdgeBetweenPorts(PortItem* outputPort, PortItem* inputPort) const;
+    bool inputPortHasConnection(PortItem* inputPort) const;
     PortItem* pickPortAt(const QPointF& scenePos) const;
     void finishConnectionAt(const QPointF& scenePos, PortItem* explicitTarget = nullptr);
     NodeItem* buildNodeByType(const QString& typeName);

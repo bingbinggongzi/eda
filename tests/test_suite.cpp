@@ -200,6 +200,7 @@ private slots:
     void serializerUnsupportedSchema();
     void sceneRoundtrip();
     void undoRedoSmoke();
+    void edgeConnectionRules();
     void granularCommandMerge();
     void obstacleRoutingToggle();
     void toolboxMimeDropAccepted();
@@ -360,6 +361,56 @@ void EdaSuite::undoRedoSmoke() {
 
     undoStack.undo();
     QCOMPARE(countEdges(scene), 0);
+}
+
+void EdaSuite::edgeConnectionRules() {
+    EditorScene scene;
+
+    NodeItem* n1 = scene.createNode(QStringLiteral("Voter"), QPointF(100.0, 100.0));
+    NodeItem* n2 = scene.createNode(QStringLiteral("SET"), QPointF(320.0, 100.0));
+    NodeItem* n3 = scene.createNode(QStringLiteral("Sum"), QPointF(560.0, 100.0));
+    QVERIFY(n1 != nullptr);
+    QVERIFY(n2 != nullptr);
+    QVERIFY(n3 != nullptr);
+
+    PortItem* out1 = n1->firstOutputPort();
+    PortItem* out2 = n2->firstOutputPort();
+    PortItem* in3 = n3->firstInputPort();
+    QVERIFY(out1 != nullptr);
+    QVERIFY(out2 != nullptr);
+    QVERIFY(in3 != nullptr);
+
+    QVERIFY(scene.createEdge(out1, in3) != nullptr);
+    QCOMPARE(countEdges(scene), 1);
+
+    // Reject duplicate source-target connection.
+    QVERIFY(scene.createEdge(out1, in3) == nullptr);
+    QCOMPARE(countEdges(scene), 1);
+
+    // Reject a second incoming edge to the same input port.
+    QVERIFY(scene.createEdge(out2, in3) == nullptr);
+    QCOMPARE(countEdges(scene), 1);
+
+    // Reject invalid direction order.
+    QVERIFY(scene.createEdge(in3, out1) == nullptr);
+
+    // Reject same-node self-connection.
+    QVERIFY(scene.createEdge(n1->firstOutputPort(), n1->firstInputPort()) == nullptr);
+
+    EditorScene undoScene;
+    QUndoStack undoStack;
+    undoScene.setUndoStack(&undoStack);
+
+    NodeItem* u1 = undoScene.createNodeWithUndo(QStringLiteral("tm_Node"), QPointF(0.0, 0.0));
+    NodeItem* u2 = undoScene.createNodeWithUndo(QStringLiteral("tm_Node"), QPointF(240.0, 0.0));
+    QVERIFY(u1 != nullptr);
+    QVERIFY(u2 != nullptr);
+    QCOMPARE(undoStack.count(), 2);
+
+    QVERIFY(undoScene.createEdgeWithUndo(u1->firstOutputPort(), u2->firstInputPort()) != nullptr);
+    QCOMPARE(undoStack.count(), 3);
+    QVERIFY(undoScene.createEdgeWithUndo(u1->firstOutputPort(), u2->firstInputPort()) == nullptr);
+    QCOMPARE(undoStack.count(), 3);
 }
 
 void EdaSuite::granularCommandMerge() {
