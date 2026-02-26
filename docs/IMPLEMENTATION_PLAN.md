@@ -218,10 +218,11 @@ Acceptance:
 - Group v3 completed with collapse/expand behavior, undo support, and persistence
 - Routing v3 completed with configurable bundle policy and bundle spacing persistence
 - Group v4 completed with explicit header toggle controls and shortcut refinement
+- Routing v4 completed with global `Balanced/Dense` profile and adaptive high-density spread
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Routing v4: per-layer/per-group bundling profiles for very dense graphs
+1. Routing v5: per-layer/per-group bundling profiles for very dense graphs
 2. Group v5: selective edge passthrough when group is collapsed
 
 ## 8. Merge Quality Gates

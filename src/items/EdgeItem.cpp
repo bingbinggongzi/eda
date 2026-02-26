@@ -67,15 +67,21 @@ bool samePoint(const QPointF& a, const QPointF& b) {
     return almostEqual(a.x(), b.x()) && almostEqual(a.y(), b.y());
 }
 
-qreal parallelBundleOffset(const EdgeItem* edge) {
+struct BundleMetrics {
+    qreal offset = 0.0;
+    int siblingCount = 0;
+};
+
+BundleMetrics computeBundleMetrics(const EdgeItem* edge) {
+    BundleMetrics metrics;
     if (!edge || !edge->scene() || !edge->sourcePort() || !edge->targetPort()) {
-        return 0.0;
+        return metrics;
     }
 
     const NodeItem* sourceNode = edge->sourcePort()->ownerNode();
     const NodeItem* targetNode = edge->targetPort()->ownerNode();
     if (!sourceNode || !targetNode) {
-        return 0.0;
+        return metrics;
     }
 
     QVector<const EdgeItem*> siblings;
@@ -97,11 +103,49 @@ qreal parallelBundleOffset(const EdgeItem* edge) {
         }
     }
 
+    metrics.siblingCount = siblings.size();
     if (siblings.size() < 2) {
-        return 0.0;
+        return metrics;
     }
 
-    std::sort(siblings.begin(), siblings.end(), [](const EdgeItem* a, const EdgeItem* b) { return a->edgeId() < b->edgeId(); });
+    const QPointF from = sourceNode->sceneBoundingRect().center();
+    const QPointF to = targetNode->sceneBoundingRect().center();
+    const bool horizontalDominant = std::abs(to.x() - from.x()) >= std::abs(to.y() - from.y());
+
+    if (edge->routingProfile() == EdgeRoutingProfile::Dense) {
+        std::sort(siblings.begin(), siblings.end(), [horizontalDominant, from, to](const EdgeItem* a, const EdgeItem* b) {
+            const QPointF aSource = a->sourcePort()->scenePos();
+            const QPointF aTarget = a->targetPort()->scenePos();
+            const QPointF bSource = b->sourcePort()->scenePos();
+            const QPointF bTarget = b->targetPort()->scenePos();
+
+            if (horizontalDominant) {
+                const bool leftToRight = from.x() <= to.x();
+                const qreal aKey = leftToRight ? aTarget.y() : -aTarget.y();
+                const qreal bKey = leftToRight ? bTarget.y() : -bTarget.y();
+                if (!qFuzzyCompare(aKey + 1.0, bKey + 1.0)) {
+                    return aKey < bKey;
+                }
+                if (!qFuzzyCompare(aSource.y() + 1.0, bSource.y() + 1.0)) {
+                    return aSource.y() < bSource.y();
+                }
+            } else {
+                const bool topToBottom = from.y() <= to.y();
+                const qreal aKey = topToBottom ? aTarget.x() : -aTarget.x();
+                const qreal bKey = topToBottom ? bTarget.x() : -bTarget.x();
+                if (!qFuzzyCompare(aKey + 1.0, bKey + 1.0)) {
+                    return aKey < bKey;
+                }
+                if (!qFuzzyCompare(aSource.x() + 1.0, bSource.x() + 1.0)) {
+                    return aSource.x() < bSource.x();
+                }
+            }
+            return a->edgeId() < b->edgeId();
+        });
+    } else {
+        std::sort(
+            siblings.begin(), siblings.end(), [](const EdgeItem* a, const EdgeItem* b) { return a->edgeId() < b->edgeId(); });
+    }
 
     int index = 0;
     for (int i = 0; i < siblings.size(); ++i) {
@@ -111,8 +155,14 @@ qreal parallelBundleOffset(const EdgeItem* edge) {
         }
     }
 
+    qreal spacing = std::max<qreal>(0.0, edge->bundleSpacing());
+    if (edge->routingProfile() == EdgeRoutingProfile::Dense) {
+        const int extraSiblings = std::max(0, static_cast<int>(siblings.size()) - 2);
+        spacing += std::min<qreal>(26.0, static_cast<qreal>(extraSiblings) * 4.0);
+    }
     const qreal centeredIndex = static_cast<qreal>(index) - (static_cast<qreal>(siblings.size() - 1) * 0.5);
-    return centeredIndex * std::max<qreal>(0.0, edge->bundleSpacing());
+    metrics.offset = centeredIndex * spacing;
+    return metrics;
 }
 
 void appendLineTo(QPainterPath* path, const QPointF& point) {
@@ -540,6 +590,10 @@ EdgeRoutingMode EdgeItem::routingMode() const {
     return m_routingMode;
 }
 
+EdgeRoutingProfile EdgeItem::routingProfile() const {
+    return m_routingProfile;
+}
+
 EdgeBundlePolicy EdgeItem::bundlePolicy() const {
     return m_bundlePolicy;
 }
@@ -575,6 +629,14 @@ void EdgeItem::setRoutingMode(EdgeRoutingMode mode) {
     updatePath();
 }
 
+void EdgeItem::setRoutingProfile(EdgeRoutingProfile profile) {
+    if (m_routingProfile == profile) {
+        return;
+    }
+    m_routingProfile = profile;
+    updatePath();
+}
+
 void EdgeItem::setBundlePolicy(EdgeBundlePolicy policy) {
     if (m_bundlePolicy == policy) {
         return;
@@ -604,14 +666,19 @@ void EdgeItem::updatePath() {
 
     const QPointF startAnchor(start.x() + startAnchorOffset(m_sourcePort), start.y());
     const QPointF endAnchor(end.x() + endAnchorOffset(m_sourcePort, m_targetPort, start, end), end.y());
-    const qreal bundleOffset = m_targetPort ? parallelBundleOffset(this) : 0.0;
+    const BundleMetrics bundleMetrics = m_targetPort ? computeBundleMetrics(this) : BundleMetrics{};
+    EdgeBundlePolicy effectivePolicy = m_bundlePolicy;
+    if (m_routingProfile == EdgeRoutingProfile::Dense && m_bundlePolicy == EdgeBundlePolicy::Centered &&
+        bundleMetrics.siblingCount >= 3) {
+        effectivePolicy = EdgeBundlePolicy::Directional;
+    }
 
     QPainterPath path;
     if (m_routingMode == EdgeRoutingMode::ObstacleAvoiding) {
         path = buildObstaclePath(
-            start, end, startAnchor, endAnchor, scene(), sourceNode, targetNode, bundleOffset, m_bundlePolicy);
+            start, end, startAnchor, endAnchor, scene(), sourceNode, targetNode, bundleMetrics.offset, effectivePolicy);
     } else {
-        path = buildManhattanPath(start, end, startAnchor, endAnchor, bundleOffset, m_bundlePolicy);
+        path = buildManhattanPath(start, end, startAnchor, endAnchor, bundleMetrics.offset, effectivePolicy);
     }
     setPath(path);
 

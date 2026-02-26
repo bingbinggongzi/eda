@@ -33,7 +33,7 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
         !qFuzzyCompare(a.autoLayoutYSpacing + 1.0, b.autoLayoutYSpacing + 1.0)) {
         return false;
     }
-    if (a.edgeBundlePolicy != b.edgeBundlePolicy ||
+    if (a.edgeRoutingProfile != b.edgeRoutingProfile || a.edgeBundlePolicy != b.edgeBundlePolicy ||
         !qFuzzyCompare(a.edgeBundleSpacing + 1.0, b.edgeBundleSpacing + 1.0)) {
         return false;
     }
@@ -157,6 +157,7 @@ EdgeItem* EditorScene::createEdge(PortItem* outputPort, PortItem* inputPort) {
 
     EdgeItem* edge = new EdgeItem(nextEdgeId(), outputPort);
     edge->setRoutingMode(m_edgeRoutingMode);
+    edge->setRoutingProfile(m_edgeRoutingProfile);
     edge->setBundlePolicy(m_edgeBundlePolicy);
     edge->setBundleSpacing(m_edgeBundleSpacing);
     edge->setTargetPort(inputPort);
@@ -759,6 +760,7 @@ EdgeItem* EditorScene::createEdgeFromData(const EdgeData& edgeData) {
 
     EdgeItem* edge = new EdgeItem(edgeData.id, outPort);
     edge->setRoutingMode(m_edgeRoutingMode);
+    edge->setRoutingProfile(m_edgeRoutingProfile);
     edge->setBundlePolicy(m_edgeBundlePolicy);
     edge->setBundleSpacing(m_edgeBundleSpacing);
     edge->setTargetPort(inPort);
@@ -813,6 +815,8 @@ GraphDocument EditorScene::toDocument() const {
     doc.autoLayoutMode = (m_autoLayoutMode == AutoLayoutMode::Grid) ? QStringLiteral("grid") : QStringLiteral("layered");
     doc.autoLayoutXSpacing = m_autoLayoutHorizontalSpacing;
     doc.autoLayoutYSpacing = m_autoLayoutVerticalSpacing;
+    doc.edgeRoutingProfile =
+        (m_edgeRoutingProfile == EdgeRoutingProfile::Dense) ? QStringLiteral("dense") : QStringLiteral("balanced");
     doc.edgeBundlePolicy =
         (m_edgeBundlePolicy == EdgeBundlePolicy::Directional) ? QStringLiteral("directional") : QStringLiteral("centered");
     doc.edgeBundleSpacing = m_edgeBundleSpacing;
@@ -884,6 +888,9 @@ bool EditorScene::fromDocument(const GraphDocument& document) {
         : AutoLayoutMode::Layered;
     m_autoLayoutHorizontalSpacing = std::max<qreal>(40.0, document.autoLayoutXSpacing);
     m_autoLayoutVerticalSpacing = std::max<qreal>(40.0, document.autoLayoutYSpacing);
+    m_edgeRoutingProfile = document.edgeRoutingProfile.compare(QStringLiteral("dense"), Qt::CaseInsensitive) == 0
+        ? EdgeRoutingProfile::Dense
+        : EdgeRoutingProfile::Balanced;
     m_edgeBundlePolicy = document.edgeBundlePolicy.compare(QStringLiteral("directional"), Qt::CaseInsensitive) == 0
         ? EdgeBundlePolicy::Directional
         : EdgeBundlePolicy::Centered;
@@ -956,6 +963,23 @@ void EditorScene::setEdgeRoutingMode(EdgeRoutingMode mode) {
 
 EdgeRoutingMode EditorScene::edgeRoutingMode() const {
     return m_edgeRoutingMode;
+}
+
+void EditorScene::setEdgeRoutingProfile(EdgeRoutingProfile profile) {
+    if (m_edgeRoutingProfile == profile) {
+        return;
+    }
+    m_edgeRoutingProfile = profile;
+    for (QGraphicsItem* item : items()) {
+        if (EdgeItem* edge = dynamic_cast<EdgeItem*>(item)) {
+            edge->setRoutingProfile(profile);
+        }
+    }
+    emit graphChanged();
+}
+
+EdgeRoutingProfile EditorScene::edgeRoutingProfile() const {
+    return m_edgeRoutingProfile;
 }
 
 void EditorScene::setEdgeBundlePolicy(EdgeBundlePolicy policy) {

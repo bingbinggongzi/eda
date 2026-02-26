@@ -201,6 +201,7 @@ bool GraphSerializer::saveToFile(const GraphDocument& document, const QString& f
     root[QStringLiteral("autoLayoutMode")] = document.autoLayoutMode;
     root[QStringLiteral("autoLayoutXSpacing")] = document.autoLayoutXSpacing;
     root[QStringLiteral("autoLayoutYSpacing")] = document.autoLayoutYSpacing;
+    root[QStringLiteral("edgeRoutingProfile")] = document.edgeRoutingProfile;
     root[QStringLiteral("edgeBundlePolicy")] = document.edgeBundlePolicy;
     root[QStringLiteral("edgeBundleSpacing")] = document.edgeBundleSpacing;
     QJsonArray collapsedGroups;
@@ -281,6 +282,12 @@ bool GraphSerializer::loadFromFile(GraphDocument* document, const QString& fileP
     }
     document->autoLayoutXSpacing = std::max(40.0, root.value(QStringLiteral("autoLayoutXSpacing")).toDouble(240.0));
     document->autoLayoutYSpacing = std::max(40.0, root.value(QStringLiteral("autoLayoutYSpacing")).toDouble(140.0));
+    document->edgeRoutingProfile = root.value(QStringLiteral("edgeRoutingProfile")).toString(QStringLiteral("balanced"));
+    if (document->edgeRoutingProfile.compare(QStringLiteral("dense"), Qt::CaseInsensitive) == 0) {
+        document->edgeRoutingProfile = QStringLiteral("dense");
+    } else {
+        document->edgeRoutingProfile = QStringLiteral("balanced");
+    }
     document->edgeBundlePolicy = root.value(QStringLiteral("edgeBundlePolicy")).toString(QStringLiteral("centered"));
     if (document->edgeBundlePolicy.compare(QStringLiteral("directional"), Qt::CaseInsensitive) == 0) {
         document->edgeBundlePolicy = QStringLiteral("directional");

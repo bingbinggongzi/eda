@@ -270,6 +270,7 @@ void EdaSuite::serializerRoundtrip() {
     src.autoLayoutMode = QStringLiteral("grid");
     src.autoLayoutXSpacing = 360.0;
     src.autoLayoutYSpacing = 210.0;
+    src.edgeRoutingProfile = QStringLiteral("dense");
     src.edgeBundlePolicy = QStringLiteral("directional");
     src.edgeBundleSpacing = 28.0;
     src.collapsedGroupIds = {QStringLiteral("G_1")};
@@ -317,6 +318,7 @@ void EdaSuite::serializerRoundtrip() {
     QCOMPARE(dst.autoLayoutMode, src.autoLayoutMode);
     QCOMPARE(dst.autoLayoutXSpacing, src.autoLayoutXSpacing);
     QCOMPARE(dst.autoLayoutYSpacing, src.autoLayoutYSpacing);
+    QCOMPARE(dst.edgeRoutingProfile, src.edgeRoutingProfile);
     QCOMPARE(dst.edgeBundlePolicy, src.edgeBundlePolicy);
     QCOMPARE(dst.edgeBundleSpacing, src.edgeBundleSpacing);
     QCOMPARE(dst.nodes.size(), src.nodes.size());
@@ -359,6 +361,7 @@ void EdaSuite::serializerLegacyMigration() {
     QCOMPARE(doc.autoLayoutMode, QStringLiteral("layered"));
     QCOMPARE(doc.autoLayoutXSpacing, 240.0);
     QCOMPARE(doc.autoLayoutYSpacing, 140.0);
+    QCOMPARE(doc.edgeRoutingProfile, QStringLiteral("balanced"));
     QCOMPARE(doc.edgeBundlePolicy, QStringLiteral("centered"));
     QCOMPARE(doc.edgeBundleSpacing, 18.0);
     QVERIFY(doc.collapsedGroupIds.isEmpty());
@@ -396,6 +399,7 @@ void EdaSuite::sceneRoundtrip() {
     EditorScene scene;
     scene.setAutoLayoutMode(AutoLayoutMode::Grid);
     scene.setAutoLayoutSpacing(300.0, 170.0);
+    scene.setEdgeRoutingProfile(EdgeRoutingProfile::Dense);
     scene.setEdgeBundlePolicy(EdgeBundlePolicy::Directional);
     scene.setEdgeBundleSpacing(26.0);
     NodeItem* n1 = scene.createNode(QStringLiteral("Voter"), QPointF(100.0, 100.0));
@@ -417,6 +421,7 @@ void EdaSuite::sceneRoundtrip() {
     QCOMPARE(loaded.autoLayoutMode(), AutoLayoutMode::Grid);
     QCOMPARE(loaded.autoLayoutHorizontalSpacing(), 300.0);
     QCOMPARE(loaded.autoLayoutVerticalSpacing(), 170.0);
+    QCOMPARE(loaded.edgeRoutingProfile(), EdgeRoutingProfile::Dense);
     QCOMPARE(loaded.edgeBundlePolicy(), EdgeBundlePolicy::Directional);
     QCOMPARE(loaded.edgeBundleSpacing(), 26.0);
     QCOMPARE(countNodes(loaded), 2);
@@ -1094,6 +1099,7 @@ void EdaSuite::bundlePolicyAndSpacingPersistence() {
     QVERIFY(source->firstOutputPort() != nullptr);
     QVERIFY(target->inputPorts().size() >= 3);
 
+    scene.setEdgeRoutingProfile(EdgeRoutingProfile::Balanced);
     scene.setEdgeBundlePolicy(EdgeBundlePolicy::Centered);
     scene.setEdgeBundleSpacing(20.0);
     QVector<EdgeItem*> edges;
@@ -1111,23 +1117,39 @@ void EdaSuite::bundlePolicyAndSpacingPersistence() {
     }
     QCOMPARE(centeredY.size(), 1);
 
+    scene.setEdgeRoutingProfile(EdgeRoutingProfile::Dense);
     scene.setEdgeBundlePolicy(EdgeBundlePolicy::Directional);
     scene.setEdgeBundleSpacing(24.0);
 
     QSet<int> directionalY;
+    qreal minDirectionalY = 0.0;
+    qreal maxDirectionalY = 0.0;
+    bool directionalInit = false;
     for (EdgeItem* edge : edges) {
         const QVector<QPointF> points = pathPolyline(edge->path());
         QVERIFY(points.size() >= 5);
         directionalY.insert(qRound(points[2].y()));
+        const qreal y = points[2].y();
+        if (!directionalInit) {
+            minDirectionalY = maxDirectionalY = y;
+            directionalInit = true;
+        } else {
+            minDirectionalY = std::min(minDirectionalY, y);
+            maxDirectionalY = std::max(maxDirectionalY, y);
+        }
     }
     QVERIFY(directionalY.size() >= 3);
+    QVERIFY(directionalInit);
+    QVERIFY((maxDirectionalY - minDirectionalY) >= 20.0);
 
     const GraphDocument doc = scene.toDocument();
+    QCOMPARE(doc.edgeRoutingProfile, QStringLiteral("dense"));
     QCOMPARE(doc.edgeBundlePolicy, QStringLiteral("directional"));
     QCOMPARE(doc.edgeBundleSpacing, 24.0);
 
     EditorScene loaded;
     QVERIFY(loaded.fromDocument(doc));
+    QCOMPARE(loaded.edgeRoutingProfile(), EdgeRoutingProfile::Dense);
     QCOMPARE(loaded.edgeBundlePolicy(), EdgeBundlePolicy::Directional);
     QCOMPARE(loaded.edgeBundleSpacing(), 24.0);
 }

@@ -43,6 +43,7 @@ struct GraphDocument {
     QString autoLayoutMode = QStringLiteral("layered");
     qreal autoLayoutXSpacing = 240.0;
     qreal autoLayoutYSpacing = 140.0;
+    QString edgeRoutingProfile = QStringLiteral("balanced");
     QString edgeBundlePolicy = QStringLiteral("centered");
     qreal edgeBundleSpacing = 18.0;
     QVector<QString> collapsedGroupIds;

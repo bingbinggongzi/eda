@@ -830,7 +830,7 @@ void MainWindow::updatePropertyTable(const QString& itemType,
     NodeItem* selectedNode = (itemType == QStringLiteral("node")) ? findNodeById(itemId) : nullptr;
     const QVector<PropertyData> customProps = selectedNode ? selectedNode->properties() : QVector<PropertyData>();
 
-    const int baseRows = 14;
+    const int baseRows = 15;
     m_propertyTable->clearContents();
     m_propertyTable->setRowCount(baseRows + customProps.size());
 
@@ -888,16 +888,35 @@ void MainWindow::updatePropertyTable(const QString& itemType,
         m_scene->setEdgeRoutingMode(mode);
     });
 
+    auto* routingProfileKey = new QTableWidgetItem(QStringLiteral("Routing Profile"));
+    routingProfileKey->setFlags(routingProfileKey->flags() & ~Qt::ItemIsEditable);
+    m_propertyTable->setItem(9, 0, routingProfileKey);
+    auto* routingProfileCombo = new QComboBox(m_propertyTable);
+    routingProfileCombo->addItems({QStringLiteral("Balanced"), QStringLiteral("Dense")});
+    const QString routingProfileText =
+        (m_scene && m_scene->edgeRoutingProfile() == EdgeRoutingProfile::Dense) ? QStringLiteral("Dense")
+                                                                                 : QStringLiteral("Balanced");
+    routingProfileCombo->setCurrentText(routingProfileText);
+    m_propertyTable->setCellWidget(9, 1, routingProfileCombo);
+    connect(routingProfileCombo, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+        if (m_propertyTableUpdating || !m_scene) {
+            return;
+        }
+        const EdgeRoutingProfile profile =
+            (text == QStringLiteral("Dense")) ? EdgeRoutingProfile::Dense : EdgeRoutingProfile::Balanced;
+        m_scene->setEdgeRoutingProfile(profile);
+    });
+
     auto* bundlePolicyKey = new QTableWidgetItem(QStringLiteral("Bundle Policy"));
     bundlePolicyKey->setFlags(bundlePolicyKey->flags() & ~Qt::ItemIsEditable);
-    m_propertyTable->setItem(9, 0, bundlePolicyKey);
+    m_propertyTable->setItem(10, 0, bundlePolicyKey);
     auto* bundlePolicyCombo = new QComboBox(m_propertyTable);
     bundlePolicyCombo->addItems({QStringLiteral("Centered"), QStringLiteral("Directional")});
     const QString bundlePolicyText =
         (m_scene && m_scene->edgeBundlePolicy() == EdgeBundlePolicy::Directional) ? QStringLiteral("Directional")
                                                                                    : QStringLiteral("Centered");
     bundlePolicyCombo->setCurrentText(bundlePolicyText);
-    m_propertyTable->setCellWidget(9, 1, bundlePolicyCombo);
+    m_propertyTable->setCellWidget(10, 1, bundlePolicyCombo);
     connect(bundlePolicyCombo, &QComboBox::currentTextChanged, this, [this](const QString& text) {
         if (m_propertyTableUpdating || !m_scene) {
             return;
@@ -909,11 +928,11 @@ void MainWindow::updatePropertyTable(const QString& itemType,
 
     auto* bundleSpacingKey = new QTableWidgetItem(QStringLiteral("Bundle Spacing"));
     bundleSpacingKey->setFlags(bundleSpacingKey->flags() & ~Qt::ItemIsEditable);
-    m_propertyTable->setItem(10, 0, bundleSpacingKey);
+    m_propertyTable->setItem(11, 0, bundleSpacingKey);
     auto* bundleSpacingSpin = new QSpinBox(m_propertyTable);
     bundleSpacingSpin->setRange(0, 200);
     bundleSpacingSpin->setValue(m_scene ? qRound(m_scene->edgeBundleSpacing()) : 18);
-    m_propertyTable->setCellWidget(10, 1, bundleSpacingSpin);
+    m_propertyTable->setCellWidget(11, 1, bundleSpacingSpin);
     connect(bundleSpacingSpin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
         if (m_propertyTableUpdating || !m_scene) {
             return;
@@ -923,14 +942,14 @@ void MainWindow::updatePropertyTable(const QString& itemType,
 
     auto* autoLayoutModeKey = new QTableWidgetItem(QStringLiteral("Auto Layout Mode"));
     autoLayoutModeKey->setFlags(autoLayoutModeKey->flags() & ~Qt::ItemIsEditable);
-    m_propertyTable->setItem(11, 0, autoLayoutModeKey);
+    m_propertyTable->setItem(12, 0, autoLayoutModeKey);
     auto* autoLayoutModeCombo = new QComboBox(m_propertyTable);
     autoLayoutModeCombo->addItems({QStringLiteral("Layered"), QStringLiteral("Grid")});
     const QString autoLayoutModeText = (m_scene && m_scene->autoLayoutMode() == AutoLayoutMode::Grid)
                                            ? QStringLiteral("Grid")
                                            : QStringLiteral("Layered");
     autoLayoutModeCombo->setCurrentText(autoLayoutModeText);
-    m_propertyTable->setCellWidget(11, 1, autoLayoutModeCombo);
+    m_propertyTable->setCellWidget(12, 1, autoLayoutModeCombo);
     connect(autoLayoutModeCombo, &QComboBox::currentTextChanged, this, [this](const QString& text) {
         if (m_propertyTableUpdating || !m_scene) {
             return;
@@ -941,11 +960,11 @@ void MainWindow::updatePropertyTable(const QString& itemType,
 
     auto* layoutXKey = new QTableWidgetItem(QStringLiteral("Layout X Spacing"));
     layoutXKey->setFlags(layoutXKey->flags() & ~Qt::ItemIsEditable);
-    m_propertyTable->setItem(12, 0, layoutXKey);
+    m_propertyTable->setItem(13, 0, layoutXKey);
     auto* layoutXSpin = new QSpinBox(m_propertyTable);
     layoutXSpin->setRange(40, 2000);
     layoutXSpin->setValue(m_scene ? qRound(m_scene->autoLayoutHorizontalSpacing()) : 240);
-    m_propertyTable->setCellWidget(12, 1, layoutXSpin);
+    m_propertyTable->setCellWidget(13, 1, layoutXSpin);
     connect(layoutXSpin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
         if (m_propertyTableUpdating || !m_scene) {
             return;
@@ -955,11 +974,11 @@ void MainWindow::updatePropertyTable(const QString& itemType,
 
     auto* layoutYKey = new QTableWidgetItem(QStringLiteral("Layout Y Spacing"));
     layoutYKey->setFlags(layoutYKey->flags() & ~Qt::ItemIsEditable);
-    m_propertyTable->setItem(13, 0, layoutYKey);
+    m_propertyTable->setItem(14, 0, layoutYKey);
     auto* layoutYSpin = new QSpinBox(m_propertyTable);
     layoutYSpin->setRange(40, 2000);
     layoutYSpin->setValue(m_scene ? qRound(m_scene->autoLayoutVerticalSpacing()) : 140);
-    m_propertyTable->setCellWidget(13, 1, layoutYSpin);
+    m_propertyTable->setCellWidget(14, 1, layoutYSpin);
     connect(layoutYSpin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
         if (m_propertyTableUpdating || !m_scene) {
             return;
