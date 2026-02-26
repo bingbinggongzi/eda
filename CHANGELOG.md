@@ -21,3 +21,4 @@ All notable changes to this project should be documented in this file.
 - Added auto layout v2 controls with explicit mode (`Layered` / `Grid`) and configurable spacing.
 - Added routing v2 bundle/spread strategy so parallel edges between the same node pair do not fully overlap.
 - Added group v2 visuals (frame/title) for grouped editing workflow readability.
+- Persisted auto-layout settings (`mode`, `X spacing`, `Y spacing`) in JSON and wired dirty-state tracking.

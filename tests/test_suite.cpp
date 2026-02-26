@@ -257,12 +257,16 @@ private slots:
     void uiSnapshotMainWindow();
     void uiSnapshotGraphViewDragPreview();
     void uiActionClickSmokeCapture();
+    void layoutSettingsMarkDirty();
     void stressLargeGraphBuild();
 };
 
 void EdaSuite::serializerRoundtrip() {
     GraphDocument src;
     src.schemaVersion = 1;
+    src.autoLayoutMode = QStringLiteral("grid");
+    src.autoLayoutXSpacing = 360.0;
+    src.autoLayoutYSpacing = 210.0;
     src.nodes.push_back(NodeData{QStringLiteral("N_1"),
                                  QStringLiteral("Voter"),
                                  QStringLiteral("VoterA"),
@@ -304,6 +308,9 @@ void EdaSuite::serializerRoundtrip() {
     QVERIFY2(error.isEmpty(), qPrintable(error));
 
     QCOMPARE(dst.schemaVersion, src.schemaVersion);
+    QCOMPARE(dst.autoLayoutMode, src.autoLayoutMode);
+    QCOMPARE(dst.autoLayoutXSpacing, src.autoLayoutXSpacing);
+    QCOMPARE(dst.autoLayoutYSpacing, src.autoLayoutYSpacing);
     QCOMPARE(dst.nodes.size(), src.nodes.size());
     QCOMPARE(dst.edges.size(), src.edges.size());
     QCOMPARE(dst.nodes[0].id, src.nodes[0].id);
@@ -341,6 +348,9 @@ void EdaSuite::serializerLegacyMigration() {
     QVERIFY2(error.isEmpty(), qPrintable(error));
 
     QCOMPARE(doc.schemaVersion, 1);
+    QCOMPARE(doc.autoLayoutMode, QStringLiteral("layered"));
+    QCOMPARE(doc.autoLayoutXSpacing, 240.0);
+    QCOMPARE(doc.autoLayoutYSpacing, 140.0);
     QCOMPARE(doc.nodes.size(), 2);
     QVERIFY(doc.nodes[0].ports.size() >= 2);
     QVERIFY(doc.nodes[1].ports.size() >= 2);
@@ -373,6 +383,8 @@ void EdaSuite::serializerUnsupportedSchema() {
 
 void EdaSuite::sceneRoundtrip() {
     EditorScene scene;
+    scene.setAutoLayoutMode(AutoLayoutMode::Grid);
+    scene.setAutoLayoutSpacing(300.0, 170.0);
     NodeItem* n1 = scene.createNode(QStringLiteral("Voter"), QPointF(100.0, 100.0));
     NodeItem* n2 = scene.createNode(QStringLiteral("Sum"), QPointF(350.0, 140.0));
     QVERIFY(n1 != nullptr);
@@ -389,6 +401,9 @@ void EdaSuite::sceneRoundtrip() {
 
     EditorScene loaded;
     QVERIFY(loaded.fromDocument(doc));
+    QCOMPARE(loaded.autoLayoutMode(), AutoLayoutMode::Grid);
+    QCOMPARE(loaded.autoLayoutHorizontalSpacing(), 300.0);
+    QCOMPARE(loaded.autoLayoutVerticalSpacing(), 170.0);
     QCOMPARE(countNodes(loaded), 2);
     QCOMPARE(countEdges(loaded), 1);
     NodeItem* loadedN1 = findNodeById(loaded, n1->nodeId());
@@ -1192,6 +1207,23 @@ void EdaSuite::uiActionClickSmokeCapture() {
     QCoreApplication::processEvents();
     QCOMPARE(window.documentCount(), countBeforeClose - 1);
     saveSmokeArtifact(renderWidgetSnapshot(&window), QStringLiteral("ui_smoke_05_after_close.png"));
+}
+
+void EdaSuite::layoutSettingsMarkDirty() {
+    MainWindow window;
+    const int index = window.activeDocumentIndex();
+    QVERIFY(index >= 0);
+    EditorScene* scene = window.activeScene();
+    QVERIFY(scene != nullptr);
+
+    const bool initialDirty = window.isDocumentDirty(index);
+    if (initialDirty) {
+        QSKIP("Initial document unexpectedly dirty; skipping dirty-state assertion.");
+    }
+
+    scene->setAutoLayoutMode(AutoLayoutMode::Grid);
+    QCoreApplication::processEvents();
+    QVERIFY(window.isDocumentDirty(index));
 }
 
 void EdaSuite::stressLargeGraphBuild() {

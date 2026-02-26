@@ -28,6 +28,11 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
     if (a.nodes.size() != b.nodes.size() || a.edges.size() != b.edges.size()) {
         return false;
     }
+    if (a.autoLayoutMode != b.autoLayoutMode ||
+        !qFuzzyCompare(a.autoLayoutXSpacing + 1.0, b.autoLayoutXSpacing + 1.0) ||
+        !qFuzzyCompare(a.autoLayoutYSpacing + 1.0, b.autoLayoutYSpacing + 1.0)) {
+        return false;
+    }
 
     auto samePort = [](const PortData& p1, const PortData& p2) {
         return p1.id == p2.id && p1.name == p2.name && p1.direction == p2.direction;
@@ -682,6 +687,9 @@ void EditorScene::clearGraph() {
 GraphDocument EditorScene::toDocument() const {
     GraphDocument doc;
     doc.schemaVersion = 1;
+    doc.autoLayoutMode = (m_autoLayoutMode == AutoLayoutMode::Grid) ? QStringLiteral("grid") : QStringLiteral("layered");
+    doc.autoLayoutXSpacing = m_autoLayoutHorizontalSpacing;
+    doc.autoLayoutYSpacing = m_autoLayoutVerticalSpacing;
 
     for (QGraphicsItem* item : items()) {
         if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
@@ -742,6 +750,12 @@ GraphDocument EditorScene::toDocument() const {
 }
 
 bool EditorScene::fromDocument(const GraphDocument& document) {
+    m_autoLayoutMode = document.autoLayoutMode.compare(QStringLiteral("grid"), Qt::CaseInsensitive) == 0
+        ? AutoLayoutMode::Grid
+        : AutoLayoutMode::Layered;
+    m_autoLayoutHorizontalSpacing = std::max<qreal>(40.0, document.autoLayoutXSpacing);
+    m_autoLayoutVerticalSpacing = std::max<qreal>(40.0, document.autoLayoutYSpacing);
+
     clearGraph();
 
     for (const NodeData& node : document.nodes) {
@@ -811,7 +825,11 @@ EdgeRoutingMode EditorScene::edgeRoutingMode() const {
 }
 
 void EditorScene::setAutoLayoutMode(AutoLayoutMode mode) {
+    if (m_autoLayoutMode == mode) {
+        return;
+    }
     m_autoLayoutMode = mode;
+    emit graphChanged();
 }
 
 AutoLayoutMode EditorScene::autoLayoutMode() const {
@@ -820,8 +838,15 @@ AutoLayoutMode EditorScene::autoLayoutMode() const {
 
 void EditorScene::setAutoLayoutSpacing(qreal horizontal, qreal vertical) {
     constexpr qreal kMinSpacing = 40.0;
-    m_autoLayoutHorizontalSpacing = std::max(kMinSpacing, horizontal);
-    m_autoLayoutVerticalSpacing = std::max(kMinSpacing, vertical);
+    const qreal nextHorizontal = std::max(kMinSpacing, horizontal);
+    const qreal nextVertical = std::max(kMinSpacing, vertical);
+    if (qFuzzyCompare(m_autoLayoutHorizontalSpacing + 1.0, nextHorizontal + 1.0) &&
+        qFuzzyCompare(m_autoLayoutVerticalSpacing + 1.0, nextVertical + 1.0)) {
+        return;
+    }
+    m_autoLayoutHorizontalSpacing = nextHorizontal;
+    m_autoLayoutVerticalSpacing = nextVertical;
+    emit graphChanged();
 }
 
 qreal EditorScene::autoLayoutHorizontalSpacing() const {

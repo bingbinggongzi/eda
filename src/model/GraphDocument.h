@@ -40,6 +40,9 @@ struct EdgeData {
 
 struct GraphDocument {
     int schemaVersion = 1;
+    QString autoLayoutMode = QStringLiteral("layered");
+    qreal autoLayoutXSpacing = 240.0;
+    qreal autoLayoutYSpacing = 140.0;
     QVector<NodeData> nodes;
     QVector<EdgeData> edges;
 };

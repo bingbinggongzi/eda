@@ -214,11 +214,12 @@ Acceptance:
 - Auto layout v2 added with explicit mode switch (layered/grid) and spacing controls
 - Routing v2 follow-up completed with bundle/spread for dense parallel edges
 - Group v2 completed with visual frame/title for grouped editing readability
+- Layout persistence v2 completed with per-document auto-layout mode/spacing storage
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Layout persistence v2: save per-document auto-layout mode/spacing defaults
-2. Group v3: add collapse/expand behavior and nested-group guardrails
+1. Group v3: add collapse/expand behavior and nested-group guardrails
+2. Routing v3: configurable bundle spacing and direction-aware spread policies
 
 ## 8. Merge Quality Gates
 

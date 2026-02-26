@@ -6,6 +6,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include <algorithm>
+
 namespace {
 QJsonObject toJson(const PortData& port) {
     QJsonObject o;
@@ -196,6 +198,9 @@ bool migrateToCurrent(GraphDocument* document, QString* errorMessage) {
 bool GraphSerializer::saveToFile(const GraphDocument& document, const QString& filePath, QString* errorMessage) {
     QJsonObject root;
     root[QStringLiteral("schemaVersion")] = document.schemaVersion;
+    root[QStringLiteral("autoLayoutMode")] = document.autoLayoutMode;
+    root[QStringLiteral("autoLayoutXSpacing")] = document.autoLayoutXSpacing;
+    root[QStringLiteral("autoLayoutYSpacing")] = document.autoLayoutYSpacing;
 
     QJsonArray nodes;
     for (const NodeData& n : document.nodes) {
@@ -259,6 +264,14 @@ bool GraphSerializer::loadFromFile(GraphDocument* document, const QString& fileP
     } else {
         document->schemaVersion = 1;
     }
+    document->autoLayoutMode = root.value(QStringLiteral("autoLayoutMode")).toString(QStringLiteral("layered"));
+    if (document->autoLayoutMode.compare(QStringLiteral("grid"), Qt::CaseInsensitive) == 0) {
+        document->autoLayoutMode = QStringLiteral("grid");
+    } else {
+        document->autoLayoutMode = QStringLiteral("layered");
+    }
+    document->autoLayoutXSpacing = std::max(40.0, root.value(QStringLiteral("autoLayoutXSpacing")).toDouble(240.0));
+    document->autoLayoutYSpacing = std::max(40.0, root.value(QStringLiteral("autoLayoutYSpacing")).toDouble(140.0));
     document->nodes.clear();
     document->edges.clear();
 
