@@ -72,6 +72,23 @@ struct BundleMetrics {
     int siblingCount = 0;
 };
 
+int layerBucketForNode(const NodeItem* node, bool horizontalDominant) {
+    if (!node) {
+        return 0;
+    }
+    constexpr qreal kLayerBucketStep = 180.0;
+    const QPointF center = node->sceneBoundingRect().center();
+    const qreal axis = horizontalDominant ? center.x() : center.y();
+    return static_cast<int>(std::round(axis / kLayerBucketStep));
+}
+
+QString groupKey(const NodeItem* node) {
+    if (!node || node->groupId().isEmpty()) {
+        return QStringLiteral("__ungrouped__");
+    }
+    return node->groupId();
+}
+
 BundleMetrics computeBundleMetrics(const EdgeItem* edge) {
     BundleMetrics metrics;
     if (!edge || !edge->scene() || !edge->sourcePort() || !edge->targetPort()) {
@@ -87,6 +104,14 @@ BundleMetrics computeBundleMetrics(const EdgeItem* edge) {
     QVector<const EdgeItem*> siblings;
     const QList<QGraphicsItem*> sceneItems = edge->scene()->items();
     siblings.reserve(sceneItems.size());
+    const QPointF from = sourceNode->sceneBoundingRect().center();
+    const QPointF to = targetNode->sceneBoundingRect().center();
+    const bool horizontalDominant = std::abs(to.x() - from.x()) >= std::abs(to.y() - from.y());
+    const EdgeBundleScope scope = edge->bundleScope();
+    const int sourceLayerBucket = layerBucketForNode(sourceNode, horizontalDominant);
+    const int targetLayerBucket = layerBucketForNode(targetNode, horizontalDominant);
+    const QString sourceGroup = groupKey(sourceNode);
+    const QString targetGroup = groupKey(targetNode);
 
     for (QGraphicsItem* item : sceneItems) {
         const EdgeItem* other = dynamic_cast<const EdgeItem*>(item);
@@ -98,7 +123,16 @@ BundleMetrics computeBundleMetrics(const EdgeItem* edge) {
         if (!otherSource || !otherTarget) {
             continue;
         }
-        if (otherSource->nodeId() == sourceNode->nodeId() && otherTarget->nodeId() == targetNode->nodeId()) {
+        bool siblingMatch = false;
+        if (scope == EdgeBundleScope::PerLayer) {
+            siblingMatch = layerBucketForNode(otherSource, horizontalDominant) == sourceLayerBucket &&
+                           layerBucketForNode(otherTarget, horizontalDominant) == targetLayerBucket;
+        } else if (scope == EdgeBundleScope::PerGroup) {
+            siblingMatch = groupKey(otherSource) == sourceGroup && groupKey(otherTarget) == targetGroup;
+        } else {
+            siblingMatch = otherSource->nodeId() == sourceNode->nodeId() && otherTarget->nodeId() == targetNode->nodeId();
+        }
+        if (siblingMatch) {
             siblings.push_back(other);
         }
     }
@@ -107,10 +141,6 @@ BundleMetrics computeBundleMetrics(const EdgeItem* edge) {
     if (siblings.size() < 2) {
         return metrics;
     }
-
-    const QPointF from = sourceNode->sceneBoundingRect().center();
-    const QPointF to = targetNode->sceneBoundingRect().center();
-    const bool horizontalDominant = std::abs(to.x() - from.x()) >= std::abs(to.y() - from.y());
 
     if (edge->routingProfile() == EdgeRoutingProfile::Dense) {
         std::sort(siblings.begin(), siblings.end(), [horizontalDominant, from, to](const EdgeItem* a, const EdgeItem* b) {
@@ -598,6 +628,10 @@ EdgeBundlePolicy EdgeItem::bundlePolicy() const {
     return m_bundlePolicy;
 }
 
+EdgeBundleScope EdgeItem::bundleScope() const {
+    return m_bundleScope;
+}
+
 qreal EdgeItem::bundleSpacing() const {
     return m_bundleSpacing;
 }
@@ -646,6 +680,14 @@ void EdgeItem::setBundlePolicy(EdgeBundlePolicy policy) {
         return;
     }
     m_bundlePolicy = policy;
+    updatePath();
+}
+
+void EdgeItem::setBundleScope(EdgeBundleScope scope) {
+    if (m_bundleScope == scope) {
+        return;
+    }
+    m_bundleScope = scope;
     updatePath();
 }
 

@@ -17,6 +17,12 @@ enum class EdgeBundlePolicy {
     Directional
 };
 
+enum class EdgeBundleScope {
+    Global,
+    PerLayer,
+    PerGroup
+};
+
 enum class EdgeRoutingProfile {
     Balanced,
     Dense
@@ -33,6 +39,7 @@ public:
     EdgeRoutingMode routingMode() const;
     EdgeRoutingProfile routingProfile() const;
     EdgeBundlePolicy bundlePolicy() const;
+    EdgeBundleScope bundleScope() const;
     qreal bundleSpacing() const;
     bool passthrough() const;
 
@@ -41,6 +48,7 @@ public:
     void setRoutingMode(EdgeRoutingMode mode);
     void setRoutingProfile(EdgeRoutingProfile profile);
     void setBundlePolicy(EdgeBundlePolicy policy);
+    void setBundleScope(EdgeBundleScope scope);
     void setBundleSpacing(qreal spacing);
     void setPassthrough(bool enabled);
     void setSourceEndpointOverride(const QPointF& scenePos);
@@ -58,6 +66,7 @@ private:
     EdgeRoutingMode m_routingMode = EdgeRoutingMode::Manhattan;
     EdgeRoutingProfile m_routingProfile = EdgeRoutingProfile::Balanced;
     EdgeBundlePolicy m_bundlePolicy = EdgeBundlePolicy::Centered;
+    EdgeBundleScope m_bundleScope = EdgeBundleScope::Global;
     qreal m_bundleSpacing = 18.0;
     bool m_passthrough = false;
     bool m_hasSourceOverride = false;

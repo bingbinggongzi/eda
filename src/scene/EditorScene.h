@@ -75,6 +75,8 @@ public:
     EdgeRoutingProfile edgeRoutingProfile() const;
     void setEdgeBundlePolicy(EdgeBundlePolicy policy);
     EdgeBundlePolicy edgeBundlePolicy() const;
+    void setEdgeBundleScope(EdgeBundleScope scope);
+    EdgeBundleScope edgeBundleScope() const;
     void setEdgeBundleSpacing(qreal spacing);
     qreal edgeBundleSpacing() const;
     void setAutoLayoutMode(AutoLayoutMode mode);
@@ -163,6 +165,7 @@ private:
     EdgeRoutingMode m_edgeRoutingMode = EdgeRoutingMode::Manhattan;
     EdgeRoutingProfile m_edgeRoutingProfile = EdgeRoutingProfile::Balanced;
     EdgeBundlePolicy m_edgeBundlePolicy = EdgeBundlePolicy::Centered;
+    EdgeBundleScope m_edgeBundleScope = EdgeBundleScope::Global;
     qreal m_edgeBundleSpacing = 18.0;
     AutoLayoutMode m_autoLayoutMode = AutoLayoutMode::Layered;
     qreal m_autoLayoutHorizontalSpacing = 240.0;

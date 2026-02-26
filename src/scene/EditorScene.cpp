@@ -34,6 +34,7 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
         return false;
     }
     if (a.edgeRoutingProfile != b.edgeRoutingProfile || a.edgeBundlePolicy != b.edgeBundlePolicy ||
+        a.edgeBundleScope != b.edgeBundleScope ||
         !qFuzzyCompare(a.edgeBundleSpacing + 1.0, b.edgeBundleSpacing + 1.0)) {
         return false;
     }
@@ -159,6 +160,7 @@ EdgeItem* EditorScene::createEdge(PortItem* outputPort, PortItem* inputPort) {
     edge->setRoutingMode(m_edgeRoutingMode);
     edge->setRoutingProfile(m_edgeRoutingProfile);
     edge->setBundlePolicy(m_edgeBundlePolicy);
+    edge->setBundleScope(m_edgeBundleScope);
     edge->setBundleSpacing(m_edgeBundleSpacing);
     edge->setTargetPort(inputPort);
     addItem(edge);
@@ -762,6 +764,7 @@ EdgeItem* EditorScene::createEdgeFromData(const EdgeData& edgeData) {
     edge->setRoutingMode(m_edgeRoutingMode);
     edge->setRoutingProfile(m_edgeRoutingProfile);
     edge->setBundlePolicy(m_edgeBundlePolicy);
+    edge->setBundleScope(m_edgeBundleScope);
     edge->setBundleSpacing(m_edgeBundleSpacing);
     edge->setTargetPort(inPort);
     addItem(edge);
@@ -819,6 +822,13 @@ GraphDocument EditorScene::toDocument() const {
         (m_edgeRoutingProfile == EdgeRoutingProfile::Dense) ? QStringLiteral("dense") : QStringLiteral("balanced");
     doc.edgeBundlePolicy =
         (m_edgeBundlePolicy == EdgeBundlePolicy::Directional) ? QStringLiteral("directional") : QStringLiteral("centered");
+    if (m_edgeBundleScope == EdgeBundleScope::PerLayer) {
+        doc.edgeBundleScope = QStringLiteral("layer");
+    } else if (m_edgeBundleScope == EdgeBundleScope::PerGroup) {
+        doc.edgeBundleScope = QStringLiteral("group");
+    } else {
+        doc.edgeBundleScope = QStringLiteral("global");
+    }
     doc.edgeBundleSpacing = m_edgeBundleSpacing;
     doc.collapsedGroupIds = m_collapsedGroups.values().toVector();
 
@@ -894,6 +904,13 @@ bool EditorScene::fromDocument(const GraphDocument& document) {
     m_edgeBundlePolicy = document.edgeBundlePolicy.compare(QStringLiteral("directional"), Qt::CaseInsensitive) == 0
         ? EdgeBundlePolicy::Directional
         : EdgeBundlePolicy::Centered;
+    if (document.edgeBundleScope.compare(QStringLiteral("layer"), Qt::CaseInsensitive) == 0) {
+        m_edgeBundleScope = EdgeBundleScope::PerLayer;
+    } else if (document.edgeBundleScope.compare(QStringLiteral("group"), Qt::CaseInsensitive) == 0) {
+        m_edgeBundleScope = EdgeBundleScope::PerGroup;
+    } else {
+        m_edgeBundleScope = EdgeBundleScope::Global;
+    }
     m_edgeBundleSpacing = std::max<qreal>(0.0, document.edgeBundleSpacing);
     m_collapsedGroups = QSet<QString>(document.collapsedGroupIds.begin(), document.collapsedGroupIds.end());
 
@@ -997,6 +1014,23 @@ void EditorScene::setEdgeBundlePolicy(EdgeBundlePolicy policy) {
 
 EdgeBundlePolicy EditorScene::edgeBundlePolicy() const {
     return m_edgeBundlePolicy;
+}
+
+void EditorScene::setEdgeBundleScope(EdgeBundleScope scope) {
+    if (m_edgeBundleScope == scope) {
+        return;
+    }
+    m_edgeBundleScope = scope;
+    for (QGraphicsItem* item : items()) {
+        if (EdgeItem* edge = dynamic_cast<EdgeItem*>(item)) {
+            edge->setBundleScope(scope);
+        }
+    }
+    emit graphChanged();
+}
+
+EdgeBundleScope EditorScene::edgeBundleScope() const {
+    return m_edgeBundleScope;
 }
 
 void EditorScene::setEdgeBundleSpacing(qreal spacing) {

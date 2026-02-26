@@ -33,6 +33,7 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Group v4: header toggle button (`+/-`) and refined collapse/expand shortcuts (`Ctrl+Alt+C` / `Ctrl+Alt+E`)
 - Routing v4: high-density `Routing Profile` (`Balanced` / `Dense`) with adaptive spread behavior
 - Group v5: collapsed groups keep cross-boundary edges visible as passthrough links, while internal edges are hidden
+- Routing v5: edge bundling scope is configurable (`Global`, `Per Layer`, `Per Group`) for dense graph readability
 
 ## Requirements
 

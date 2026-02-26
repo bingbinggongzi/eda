@@ -220,10 +220,11 @@ Acceptance:
 - Group v4 completed with explicit header toggle controls and shortcut refinement
 - Routing v4 completed with global `Balanced/Dense` profile and adaptive high-density spread
 - Group v5 completed with selective collapsed-edge passthrough and collapsed group anchor rerouting
+- Routing v5 completed with configurable bundle scope (`Global`/`Per Layer`/`Per Group`) and persistence
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Routing v5: per-layer/per-group bundling profiles for very dense graphs
+- No pending item in the current queue
 
 ## 8. Merge Quality Gates
 
