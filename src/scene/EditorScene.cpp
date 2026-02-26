@@ -645,6 +645,33 @@ bool EditorScene::expandSelectionWithUndo() {
     return true;
 }
 
+bool EditorScene::toggleGroupCollapsedByIdWithUndo(const QString& groupId) {
+    if (groupId.isEmpty() || !m_nodeGroups.contains(groupId)) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    const bool willCollapse = !m_collapsedGroups.contains(groupId);
+    if (willCollapse) {
+        m_collapsedGroups.insert(groupId);
+    } else {
+        m_collapsedGroups.remove(groupId);
+    }
+    refreshCollapsedVisibility();
+    emit graphChanged();
+    onSelectionChangedInternal();
+
+    if (!m_undoStack) {
+        return true;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(
+            this, before, after, willCollapse ? QStringLiteral("Collapse Group") : QStringLiteral("Expand Group"), true));
+    }
+    return true;
+}
+
 void EditorScene::deleteSelectionWithUndo() {
     const QList<QGraphicsItem*> selected = selectedItems();
     const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
@@ -1000,6 +1027,26 @@ qreal EditorScene::autoLayoutVerticalSpacing() const {
 }
 
 void EditorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) {
+        const QTransform viewTransform = views().isEmpty() ? QTransform() : views().first()->transform();
+        QGraphicsItem* hit = itemAt(event->scenePos(), viewTransform);
+        while (hit) {
+            const QString tag = hit->data(0).toString();
+            if (tag == QStringLiteral("group_toggle") || tag == QStringLiteral("group_toggle_text")) {
+                QString groupId = hit->data(1).toString();
+                if (groupId.isEmpty() && hit->parentItem()) {
+                    groupId = hit->parentItem()->data(1).toString();
+                }
+                if (toggleGroupCollapsedByIdWithUndo(groupId)) {
+                    event->accept();
+                    return;
+                }
+                break;
+            }
+            hit = hit->parentItem();
+        }
+    }
+
     m_draggingGroup = nullptr;
     m_draggingGroupTracked = false;
     if (event->button() == Qt::LeftButton) {
@@ -1438,6 +1485,7 @@ void EditorScene::rebuildNodeGroups() {
         group->setFlag(QGraphicsItem::ItemIsSelectable, true);
         group->setFlag(QGraphicsItem::ItemIsMovable, true);
         group->setData(0, groupId);
+        group->setData(1, groupId);
 
         const QRectF contentBounds = group->childrenBoundingRect();
         const QRectF frameRect = contentBounds.adjusted(-14.0, -28.0, 14.0, 14.0);
@@ -1459,6 +1507,26 @@ void EditorScene::rebuildNodeGroups() {
         title->setFlag(QGraphicsItem::ItemIsMovable, false);
         title->setZValue(-999.0);
         title->setData(0, QStringLiteral("group_title"));
+
+        const QRectF toggleRect(frameRect.right() - 22.0, frameRect.top() + 4.0, 14.0, 14.0);
+        auto* toggle = new QGraphicsRectItem(toggleRect, group);
+        toggle->setPen(QPen(QColor(70, 110, 176), 1.0));
+        toggle->setBrush(QColor(238, 245, 255, 220));
+        toggle->setFlag(QGraphicsItem::ItemIsSelectable, false);
+        toggle->setFlag(QGraphicsItem::ItemIsMovable, false);
+        toggle->setData(0, QStringLiteral("group_toggle"));
+        toggle->setData(1, groupId);
+        toggle->setZValue(-998.0);
+
+        auto* toggleText = new QGraphicsSimpleTextItem(QStringLiteral("-"), group);
+        toggleText->setBrush(QColor(56, 88, 146));
+        toggleText->setPos(toggleRect.left() + 4.0, toggleRect.top() - 1.0);
+        toggleText->setAcceptedMouseButtons(Qt::NoButton);
+        toggleText->setFlag(QGraphicsItem::ItemIsSelectable, false);
+        toggleText->setFlag(QGraphicsItem::ItemIsMovable, false);
+        toggleText->setData(0, QStringLiteral("group_toggle_text"));
+        toggleText->setData(1, groupId);
+        toggleText->setZValue(-997.0);
 
         m_nodeGroups.insert(groupId, group);
         updateCounterFromId(groupId, &m_groupCounter);
@@ -1559,6 +1627,15 @@ void EditorScene::refreshCollapsedVisibility() {
                 if (QGraphicsSimpleTextItem* title = dynamic_cast<QGraphicsSimpleTextItem*>(child)) {
                     title->setText(collapsed ? QStringLiteral("Group %1 (collapsed)").arg(groupId)
                                              : QStringLiteral("Group %1").arg(groupId));
+                }
+            } else if (tag == QStringLiteral("group_toggle")) {
+                if (QGraphicsRectItem* toggle = dynamic_cast<QGraphicsRectItem*>(child)) {
+                    toggle->setPen(QPen(collapsed ? QColor(44, 104, 188) : QColor(70, 110, 176), 1.0));
+                    toggle->setBrush(collapsed ? QColor(225, 237, 255, 240) : QColor(238, 245, 255, 220));
+                }
+            } else if (tag == QStringLiteral("group_toggle_text")) {
+                if (QGraphicsSimpleTextItem* text = dynamic_cast<QGraphicsSimpleTextItem*>(child)) {
+                    text->setText(collapsed ? QStringLiteral("+") : QStringLiteral("-"));
                 }
             }
         }

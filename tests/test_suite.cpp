@@ -249,6 +249,7 @@ private slots:
     void groupUngroupUndo();
     void groupVisualAndSelectMembers();
     void groupCollapseUndoPersistenceAndNestedGuard();
+    void groupHeaderToggleByClick();
     void obstacleRoutingToggle();
     void obstacleRoutingDirectionalBias();
     void parallelEdgeBundleSpread();
@@ -933,6 +934,54 @@ void EdaSuite::groupCollapseUndoPersistenceAndNestedGuard() {
     b = findNodeById(scene, bId);
     QVERIFY(a != nullptr);
     QVERIFY(b != nullptr);
+    QVERIFY(a->isVisible());
+    QVERIFY(b->isVisible());
+}
+
+void EdaSuite::groupHeaderToggleByClick() {
+    EditorScene scene;
+    scene.setSceneRect(0.0, 0.0, 1600.0, 1000.0);
+    scene.setSnapToGrid(false);
+
+    NodeItem* a = scene.createNode(QStringLiteral("tm_Node"), QPointF(160.0, 180.0));
+    NodeItem* b = scene.createNode(QStringLiteral("tm_Node"), QPointF(420.0, 180.0));
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+    const QString aId = a->nodeId();
+    const QString bId = b->nodeId();
+
+    a->setSelected(true);
+    b->setSelected(true);
+    QVERIFY(scene.groupSelectionWithUndo());
+
+    QGraphicsItem* toggle = nullptr;
+    for (QGraphicsItem* item : scene.items()) {
+        if (item->data(0).toString() == QStringLiteral("group_toggle")) {
+            toggle = item;
+            break;
+        }
+    }
+    QVERIFY(toggle != nullptr);
+
+    GraphView view;
+    view.resize(960, 640);
+    view.setScene(&scene);
+    view.show();
+    QCoreApplication::processEvents();
+
+    const QPoint clickPos = view.mapFromScene(toggle->sceneBoundingRect().center());
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, clickPos);
+    QCoreApplication::processEvents();
+
+    a = findNodeById(scene, aId);
+    b = findNodeById(scene, bId);
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+    QVERIFY(!a->isVisible());
+    QVERIFY(!b->isVisible());
+
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, clickPos);
+    QCoreApplication::processEvents();
     QVERIFY(a->isVisible());
     QVERIFY(b->isVisible());
 }

@@ -210,9 +210,9 @@ void MainWindow::setupMenusAndToolbar() {
     QAction* ungroupAction = editMenu->addAction(QStringLiteral("Ungroup"));
     ungroupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+G")));
     QAction* collapseGroupAction = editMenu->addAction(QStringLiteral("Collapse Group"));
-    collapseGroupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+-")));
+    collapseGroupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+C")));
     QAction* expandGroupAction = editMenu->addAction(QStringLiteral("Expand Group"));
-    expandGroupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+=")));
+    expandGroupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+E")));
     editMenu->addSeparator();
     QAction* rotateCwAction = editMenu->addAction(QStringLiteral("Rotate +90"));
     rotateCwAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));

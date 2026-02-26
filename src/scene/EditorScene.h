@@ -117,6 +117,7 @@ private:
     QGraphicsItemGroup* owningGroupItem(QGraphicsItem* item) const;
     QSet<QString> collectSelectedGroupIds() const;
     void refreshCollapsedVisibility();
+    bool toggleGroupCollapsedByIdWithUndo(const QString& groupId);
     QPointF snapPoint(const QPointF& p) const;
     NodeItem* findNodeByIdInternal(const QString& nodeId) const;
     bool applyNodeRenameInternal(const QString& nodeId, const QString& newName, bool emitGraphChanged);

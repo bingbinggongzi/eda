@@ -217,11 +217,12 @@ Acceptance:
 - Layout persistence v2 completed with per-document auto-layout mode/spacing storage
 - Group v3 completed with collapse/expand behavior, undo support, and persistence
 - Routing v3 completed with configurable bundle policy and bundle spacing persistence
+- Group v4 completed with explicit header toggle controls and shortcut refinement
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Group v4: explicit group header controls (expand/collapse icons) and keyboard shortcuts refinement
-2. Routing v4: per-layer/per-group bundling profiles for very dense graphs
+1. Routing v4: per-layer/per-group bundling profiles for very dense graphs
+2. Group v5: selective edge passthrough when group is collapsed
 
 ## 8. Merge Quality Gates
 

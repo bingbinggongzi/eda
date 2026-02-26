@@ -30,6 +30,7 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Auto layout settings are persisted per document (`mode`, `X spacing`, `Y spacing`)
 - Group v3: `Collapse Group` / `Expand Group` with undo and JSON persistence (`collapsedGroups`)
 - Routing v3: configurable bundle policy (`Centered` / `Directional`) and bundle spacing
+- Group v4: header toggle button (`+/-`) and refined collapse/expand shortcuts (`Ctrl+Alt+C` / `Ctrl+Alt+E`)
 
 ## Requirements
 
