@@ -16,6 +16,7 @@
 #include <QSignalSpy>
 #include <QStatusBar>
 #include <QTemporaryDir>
+#include <QToolBar>
 #include <QtTest>
 #include <QUndoStack>
 
@@ -147,6 +148,15 @@ bool compareOrUpdateSnapshot(const QImage& actualInput,
     return true;
 }
 
+void saveSmokeArtifact(const QImage& image, const QString& fileName) {
+    if (image.isNull()) {
+        return;
+    }
+    QDir artifactDir(snapshotArtifactDir());
+    artifactDir.mkpath(QStringLiteral("."));
+    image.save(artifactDir.filePath(fileName));
+}
+
 int countNodes(const EditorScene& scene) {
     int count = 0;
     for (QGraphicsItem* item : scene.items()) {
@@ -197,6 +207,7 @@ private slots:
     void fileLifecycleOpenAndDirtyPrompt();
     void uiSnapshotMainWindow();
     void uiSnapshotGraphViewDragPreview();
+    void uiActionClickSmokeCapture();
     void stressLargeGraphBuild();
 };
 
@@ -590,6 +601,85 @@ void EdaSuite::uiSnapshotGraphViewDragPreview() {
     options.channelTolerance = 8;
     options.maxDifferentRatio = 0.015;
     QVERIFY2(compareOrUpdateSnapshot(actual, QStringLiteral("graph_view_drag_preview"), options, &error), qPrintable(error));
+}
+
+void EdaSuite::uiActionClickSmokeCapture() {
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString savePath = tmp.filePath(QStringLiteral("toolbar_save.json"));
+    const QString openPath = tmp.filePath(QStringLiteral("toolbar_open.json"));
+
+    MainWindow window;
+    window.resize(1300, 820);
+    window.show();
+    QCoreApplication::processEvents();
+
+    window.setSaveFileDialogProvider([savePath](const QString&) { return savePath; });
+    window.setOpenFileDialogProvider([openPath]() { return openPath; });
+    window.setUnsavedPromptProvider([](const QString&) { return QMessageBox::Discard; });
+
+    auto findAction = [&window](const QString& text) -> QAction* {
+        const QList<QAction*> actions = window.findChildren<QAction*>();
+        for (QAction* action : actions) {
+            if (action && action->text() == text) {
+                return action;
+            }
+        }
+        return nullptr;
+    };
+
+    QAction* newAction = findAction(QStringLiteral("New"));
+    QAction* saveAction = findAction(QStringLiteral("Save"));
+    QAction* clearAction = findAction(QStringLiteral("Clear Graph"));
+    QAction* openAction = findAction(QStringLiteral("Open"));
+    QAction* closeAction = findAction(QStringLiteral("Close Tab"));
+
+    QVERIFY(newAction != nullptr);
+    QVERIFY(saveAction != nullptr);
+    QVERIFY(clearAction != nullptr);
+    QVERIFY(openAction != nullptr);
+    QVERIFY(closeAction != nullptr);
+
+    saveSmokeArtifact(renderWidgetSnapshot(&window), QStringLiteral("ui_smoke_00_start.png"));
+
+    const int beforeCount = window.documentCount();
+    newAction->trigger();
+    QCoreApplication::processEvents();
+    QCOMPARE(window.documentCount(), beforeCount + 1);
+    saveSmokeArtifact(renderWidgetSnapshot(&window), QStringLiteral("ui_smoke_01_after_new.png"));
+
+    EditorScene* scene = window.activeScene();
+    QVERIFY(scene != nullptr);
+    QVERIFY(scene->createNodeWithUndo(QStringLiteral("Voter"), QPointF(240.0, 200.0)) != nullptr);
+    QCoreApplication::processEvents();
+    QVERIFY(window.isDocumentDirty(window.activeDocumentIndex()));
+
+    saveAction->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(QFileInfo::exists(savePath));
+    QVERIFY(!window.isDocumentDirty(window.activeDocumentIndex()));
+    saveSmokeArtifact(renderWidgetSnapshot(&window), QStringLiteral("ui_smoke_02_after_save.png"));
+
+    clearAction->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(window.isDocumentDirty(window.activeDocumentIndex()));
+    saveSmokeArtifact(renderWidgetSnapshot(&window), QStringLiteral("ui_smoke_03_after_clear.png"));
+
+    // Prepare open target by saving current graph to dedicated path.
+    QString error;
+    QVERIFY(GraphSerializer::saveToFile(scene->toDocument(), openPath, &error));
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+
+    openAction->trigger();
+    QCoreApplication::processEvents();
+    QCOMPARE(window.documentFilePath(window.activeDocumentIndex()), openPath);
+    saveSmokeArtifact(renderWidgetSnapshot(&window), QStringLiteral("ui_smoke_04_after_open.png"));
+
+    const int countBeforeClose = window.documentCount();
+    closeAction->trigger();
+    QCoreApplication::processEvents();
+    QCOMPARE(window.documentCount(), countBeforeClose - 1);
+    saveSmokeArtifact(renderWidgetSnapshot(&window), QStringLiteral("ui_smoke_05_after_close.png"));
 }
 
 void EdaSuite::stressLargeGraphBuild() {
