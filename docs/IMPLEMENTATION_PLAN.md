@@ -215,11 +215,12 @@ Acceptance:
 - Routing v2 follow-up completed with bundle/spread for dense parallel edges
 - Group v2 completed with visual frame/title for grouped editing readability
 - Layout persistence v2 completed with per-document auto-layout mode/spacing storage
+- Group v3 completed with collapse/expand behavior, undo support, and persistence
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Group v3: add collapse/expand behavior and nested-group guardrails
-2. Routing v3: configurable bundle spacing and direction-aware spread policies
+1. Routing v3: configurable bundle spacing and direction-aware spread policies
+2. Group v4: explicit group header controls (expand/collapse icons) and keyboard shortcuts refinement
 
 ## 8. Merge Quality Gates
 

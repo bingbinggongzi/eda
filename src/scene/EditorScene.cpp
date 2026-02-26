@@ -33,6 +33,16 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
         !qFuzzyCompare(a.autoLayoutYSpacing + 1.0, b.autoLayoutYSpacing + 1.0)) {
         return false;
     }
+    if (a.collapsedGroupIds.size() != b.collapsedGroupIds.size()) {
+        return false;
+    }
+    QVector<QString> collapsedA = a.collapsedGroupIds;
+    QVector<QString> collapsedB = b.collapsedGroupIds;
+    std::sort(collapsedA.begin(), collapsedA.end());
+    std::sort(collapsedB.begin(), collapsedB.end());
+    if (collapsedA != collapsedB) {
+        return false;
+    }
 
     auto samePort = [](const PortData& p1, const PortData& p2) {
         return p1.id == p2.id && p1.name == p2.name && p1.direction == p2.direction;
@@ -485,6 +495,11 @@ bool EditorScene::groupSelectionWithUndo() {
     if (selectedNodes.size() < 2) {
         return false;
     }
+    for (NodeItem* node : selectedNodes) {
+        if (node && !node->groupId().isEmpty()) {
+            return false;
+        }
+    }
 
     const GraphDocument before = toDocument();
     const QString groupId = nextGroupId();
@@ -534,11 +549,15 @@ bool EditorScene::ungroupSelectionWithUndo() {
         node->setGroupId(QString());
         changed = true;
     }
+    for (const QString& groupId : targetGroupIds) {
+        m_collapsedGroups.remove(groupId);
+    }
     if (!changed) {
         return false;
     }
 
     rebuildNodeGroups();
+    refreshCollapsedVisibility();
     emit graphChanged();
     onSelectionChangedInternal();
 
@@ -548,6 +567,74 @@ bool EditorScene::ungroupSelectionWithUndo() {
     const GraphDocument after = toDocument();
     if (!areDocumentsEquivalent(before, after)) {
         m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Ungroup"), true));
+    }
+    return true;
+}
+
+bool EditorScene::collapseSelectionWithUndo() {
+    const QSet<QString> selectedGroups = collectSelectedGroupIds();
+    if (selectedGroups.isEmpty()) {
+        return false;
+    }
+
+    QSet<QString> toCollapse;
+    for (const QString& groupId : selectedGroups) {
+        if (!m_collapsedGroups.contains(groupId)) {
+            toCollapse.insert(groupId);
+        }
+    }
+    if (toCollapse.isEmpty()) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    for (const QString& groupId : toCollapse) {
+        m_collapsedGroups.insert(groupId);
+    }
+    refreshCollapsedVisibility();
+    emit graphChanged();
+    onSelectionChangedInternal();
+
+    if (!m_undoStack) {
+        return true;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Collapse Group"), true));
+    }
+    return true;
+}
+
+bool EditorScene::expandSelectionWithUndo() {
+    const QSet<QString> selectedGroups = collectSelectedGroupIds();
+    if (selectedGroups.isEmpty()) {
+        return false;
+    }
+
+    QSet<QString> toExpand;
+    for (const QString& groupId : selectedGroups) {
+        if (m_collapsedGroups.contains(groupId)) {
+            toExpand.insert(groupId);
+        }
+    }
+    if (toExpand.isEmpty()) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    for (const QString& groupId : toExpand) {
+        m_collapsedGroups.remove(groupId);
+    }
+    refreshCollapsedVisibility();
+    emit graphChanged();
+    onSelectionChangedInternal();
+
+    if (!m_undoStack) {
+        return true;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Expand Group"), true));
     }
     return true;
 }
@@ -681,6 +768,7 @@ void EditorScene::clearGraph() {
     m_portCounter = 1;
     m_edgeCounter = 1;
     m_groupCounter = 1;
+    m_collapsedGroups.clear();
     emit graphChanged();
 }
 
@@ -690,6 +778,7 @@ GraphDocument EditorScene::toDocument() const {
     doc.autoLayoutMode = (m_autoLayoutMode == AutoLayoutMode::Grid) ? QStringLiteral("grid") : QStringLiteral("layered");
     doc.autoLayoutXSpacing = m_autoLayoutHorizontalSpacing;
     doc.autoLayoutYSpacing = m_autoLayoutVerticalSpacing;
+    doc.collapsedGroupIds = m_collapsedGroups.values().toVector();
 
     for (QGraphicsItem* item : items()) {
         if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
@@ -745,18 +834,19 @@ GraphDocument EditorScene::toDocument() const {
                   node.properties.end(),
                   [](const PropertyData& a, const PropertyData& b) { return a.key < b.key; });
     }
+    std::sort(doc.collapsedGroupIds.begin(), doc.collapsedGroupIds.end());
 
     return doc;
 }
 
 bool EditorScene::fromDocument(const GraphDocument& document) {
+    clearGraph();
     m_autoLayoutMode = document.autoLayoutMode.compare(QStringLiteral("grid"), Qt::CaseInsensitive) == 0
         ? AutoLayoutMode::Grid
         : AutoLayoutMode::Layered;
     m_autoLayoutHorizontalSpacing = std::max<qreal>(40.0, document.autoLayoutXSpacing);
     m_autoLayoutVerticalSpacing = std::max<qreal>(40.0, document.autoLayoutYSpacing);
-
-    clearGraph();
+    m_collapsedGroups = QSet<QString>(document.collapsedGroupIds.begin(), document.collapsedGroupIds.end());
 
     for (const NodeData& node : document.nodes) {
         if (!createNodeFromData(node)) {
@@ -768,6 +858,7 @@ bool EditorScene::fromDocument(const GraphDocument& document) {
     }
 
     rebuildNodeGroups();
+    refreshCollapsedVisibility();
 
     emit graphChanged();
     return true;
@@ -1256,6 +1347,7 @@ void EditorScene::rebuildNodeGroups() {
         groupedNodes[node->groupId()].push_back(node);
     }
 
+    QSet<QString> validGroupIds;
     for (auto it = groupedNodes.begin(); it != groupedNodes.end();) {
         if (it.value().size() < 2) {
             for (NodeItem* node : it.value()) {
@@ -1266,10 +1358,19 @@ void EditorScene::rebuildNodeGroups() {
             it = groupedNodes.erase(it);
             continue;
         }
+        validGroupIds.insert(it.key());
         std::sort(it.value().begin(), it.value().end(), [](const NodeItem* a, const NodeItem* b) {
             return a->nodeId() < b->nodeId();
         });
         ++it;
+    }
+
+    for (auto it = m_collapsedGroups.begin(); it != m_collapsedGroups.end();) {
+        if (!validGroupIds.contains(*it)) {
+            it = m_collapsedGroups.erase(it);
+        } else {
+            ++it;
+        }
     }
 
     for (auto it = groupedNodes.begin(); it != groupedNodes.end(); ++it) {
@@ -1297,6 +1398,7 @@ void EditorScene::rebuildNodeGroups() {
         frame->setFlag(QGraphicsItem::ItemIsSelectable, false);
         frame->setFlag(QGraphicsItem::ItemIsMovable, false);
         frame->setZValue(-1000.0);
+        frame->setData(0, QStringLiteral("group_frame"));
 
         auto* title = new QGraphicsSimpleTextItem(QStringLiteral("Group %1").arg(groupId), group);
         title->setBrush(QColor(64, 94, 146));
@@ -1305,10 +1407,13 @@ void EditorScene::rebuildNodeGroups() {
         title->setFlag(QGraphicsItem::ItemIsSelectable, false);
         title->setFlag(QGraphicsItem::ItemIsMovable, false);
         title->setZValue(-999.0);
+        title->setData(0, QStringLiteral("group_title"));
 
         m_nodeGroups.insert(groupId, group);
         updateCounterFromId(groupId, &m_groupCounter);
     }
+
+    refreshCollapsedVisibility();
 }
 
 QGraphicsItemGroup* EditorScene::owningGroupItem(QGraphicsItem* item) const {
@@ -1323,6 +1428,90 @@ QGraphicsItemGroup* EditorScene::owningGroupItem(QGraphicsItem* item) const {
         cursor = cursor->parentItem();
     }
     return nullptr;
+}
+
+QSet<QString> EditorScene::collectSelectedGroupIds() const {
+    QSet<QString> groupIds;
+    const QList<QGraphicsItem*> selected = selectedItems();
+    const QList<QGraphicsItemGroup*> knownGroups = m_nodeGroups.values();
+    for (QGraphicsItem* item : selected) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            if (!node->groupId().isEmpty()) {
+                groupIds.insert(node->groupId());
+            }
+            continue;
+        }
+        if (QGraphicsItemGroup* group = dynamic_cast<QGraphicsItemGroup*>(item)) {
+            if (knownGroups.contains(group)) {
+                const QString groupId = group->data(0).toString();
+                if (!groupId.isEmpty()) {
+                    groupIds.insert(groupId);
+                }
+            }
+        }
+    }
+    return groupIds;
+}
+
+void EditorScene::refreshCollapsedVisibility() {
+    QSet<QString> collapsedNodeIds;
+    for (QGraphicsItem* item : items()) {
+        NodeItem* node = dynamic_cast<NodeItem*>(item);
+        if (!node) {
+            continue;
+        }
+        const bool collapsed = !node->groupId().isEmpty() && m_collapsedGroups.contains(node->groupId());
+        node->setVisible(!collapsed);
+        if (collapsed && node->isSelected()) {
+            node->setSelected(false);
+        }
+        if (collapsed) {
+            collapsedNodeIds.insert(node->nodeId());
+        }
+    }
+
+    for (QGraphicsItem* item : items()) {
+        EdgeItem* edge = dynamic_cast<EdgeItem*>(item);
+        if (!edge || !edge->sourcePort() || !edge->targetPort()) {
+            continue;
+        }
+        const NodeItem* sourceNode = edge->sourcePort()->ownerNode();
+        const NodeItem* targetNode = edge->targetPort()->ownerNode();
+        if (!sourceNode || !targetNode) {
+            continue;
+        }
+        const bool hidden = collapsedNodeIds.contains(sourceNode->nodeId()) || collapsedNodeIds.contains(targetNode->nodeId());
+        edge->setVisible(!hidden);
+        if (hidden && edge->isSelected()) {
+            edge->setSelected(false);
+        }
+    }
+
+    for (auto it = m_nodeGroups.constBegin(); it != m_nodeGroups.constEnd(); ++it) {
+        const QString& groupId = it.key();
+        QGraphicsItemGroup* group = it.value();
+        if (!group) {
+            continue;
+        }
+        const bool collapsed = m_collapsedGroups.contains(groupId);
+        const QList<QGraphicsItem*> children = group->childItems();
+        for (QGraphicsItem* child : children) {
+            const QString tag = child->data(0).toString();
+            if (tag == QStringLiteral("group_frame")) {
+                if (QGraphicsRectItem* frame = dynamic_cast<QGraphicsRectItem*>(child)) {
+                    frame->setPen(QPen(collapsed ? QColor(32, 92, 182) : QColor(80, 120, 190),
+                                       collapsed ? 1.6 : 1.2,
+                                       Qt::DashLine));
+                    frame->setBrush(collapsed ? QColor(145, 181, 233, 52) : QColor(170, 195, 235, 24));
+                }
+            } else if (tag == QStringLiteral("group_title")) {
+                if (QGraphicsSimpleTextItem* title = dynamic_cast<QGraphicsSimpleTextItem*>(child)) {
+                    title->setText(collapsed ? QStringLiteral("Group %1 (collapsed)").arg(groupId)
+                                             : QStringLiteral("Group %1").arg(groupId));
+                }
+            }
+        }
+    }
 }
 
 bool EditorScene::applyAutoLayout(const QVector<NodeItem*>& nodes) {

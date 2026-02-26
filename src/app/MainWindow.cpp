@@ -209,6 +209,10 @@ void MainWindow::setupMenusAndToolbar() {
     groupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
     QAction* ungroupAction = editMenu->addAction(QStringLiteral("Ungroup"));
     ungroupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+G")));
+    QAction* collapseGroupAction = editMenu->addAction(QStringLiteral("Collapse Group"));
+    collapseGroupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+-")));
+    QAction* expandGroupAction = editMenu->addAction(QStringLiteral("Expand Group"));
+    expandGroupAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+=")));
     editMenu->addSeparator();
     QAction* rotateCwAction = editMenu->addAction(QStringLiteral("Rotate +90"));
     rotateCwAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));
@@ -239,6 +243,8 @@ void MainWindow::setupMenusAndToolbar() {
     toolBar->addAction(autoLayoutAction);
     toolBar->addAction(groupAction);
     toolBar->addAction(ungroupAction);
+    toolBar->addAction(collapseGroupAction);
+    toolBar->addAction(expandGroupAction);
     toolBar->addAction(rotateCwAction);
     toolBar->addAction(rotateCcwAction);
     toolBar->addSeparator();
@@ -315,6 +321,28 @@ void MainWindow::setupMenusAndToolbar() {
             statusBar()->showMessage(QStringLiteral("Group removed"), 1200);
         } else {
             statusBar()->showMessage(QStringLiteral("Ungroup skipped"), 1200);
+        }
+    });
+
+    connect(collapseGroupAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->collapseSelectionWithUndo()) {
+            statusBar()->showMessage(QStringLiteral("Group collapsed"), 1200);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Collapse skipped"), 1200);
+        }
+    });
+
+    connect(expandGroupAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->expandSelectionWithUndo()) {
+            statusBar()->showMessage(QStringLiteral("Group expanded"), 1200);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Expand skipped"), 1200);
         }
     });
 

@@ -248,6 +248,7 @@ private slots:
     void rotateAndLayerUndo();
     void groupUngroupUndo();
     void groupVisualAndSelectMembers();
+    void groupCollapseUndoPersistenceAndNestedGuard();
     void obstacleRoutingToggle();
     void obstacleRoutingDirectionalBias();
     void parallelEdgeBundleSpread();
@@ -267,6 +268,7 @@ void EdaSuite::serializerRoundtrip() {
     src.autoLayoutMode = QStringLiteral("grid");
     src.autoLayoutXSpacing = 360.0;
     src.autoLayoutYSpacing = 210.0;
+    src.collapsedGroupIds = {QStringLiteral("G_1")};
     src.nodes.push_back(NodeData{QStringLiteral("N_1"),
                                  QStringLiteral("Voter"),
                                  QStringLiteral("VoterA"),
@@ -351,6 +353,7 @@ void EdaSuite::serializerLegacyMigration() {
     QCOMPARE(doc.autoLayoutMode, QStringLiteral("layered"));
     QCOMPARE(doc.autoLayoutXSpacing, 240.0);
     QCOMPARE(doc.autoLayoutYSpacing, 140.0);
+    QVERIFY(doc.collapsedGroupIds.isEmpty());
     QCOMPARE(doc.nodes.size(), 2);
     QVERIFY(doc.nodes[0].ports.size() >= 2);
     QVERIFY(doc.nodes[1].ports.size() >= 2);
@@ -835,6 +838,92 @@ void EdaSuite::groupVisualAndSelectMembers() {
     }
     QVERIFY(hasFrame);
     QVERIFY(hasTitle);
+}
+
+void EdaSuite::groupCollapseUndoPersistenceAndNestedGuard() {
+    EditorScene scene;
+    scene.setSnapToGrid(false);
+    QUndoStack undoStack;
+    scene.setUndoStack(&undoStack);
+
+    NodeItem* a = scene.createNode(QStringLiteral("tm_Node"), QPointF(120.0, 120.0));
+    NodeItem* b = scene.createNode(QStringLiteral("tm_Node"), QPointF(340.0, 120.0));
+    NodeItem* c = scene.createNode(QStringLiteral("tm_Node"), QPointF(560.0, 120.0));
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+    QVERIFY(c != nullptr);
+
+    const QString aId = a->nodeId();
+    const QString bId = b->nodeId();
+    const QString cId = c->nodeId();
+
+    a->setSelected(true);
+    b->setSelected(true);
+    QVERIFY(scene.groupSelectionWithUndo());
+    QCOMPARE(undoStack.count(), 1);
+    const QString groupId = a->groupId();
+    QVERIFY(!groupId.isEmpty());
+
+    scene.clearSelection();
+    a = findNodeById(scene, aId);
+    c = findNodeById(scene, cId);
+    QVERIFY(a != nullptr);
+    QVERIFY(c != nullptr);
+    a->setSelected(true);
+    c->setSelected(true);
+    QVERIFY(!scene.groupSelectionWithUndo());
+
+    scene.clearSelection();
+    a = findNodeById(scene, aId);
+    QVERIFY(a != nullptr);
+    a->setSelected(true);
+    QVERIFY(scene.collapseSelectionWithUndo());
+    QCOMPARE(undoStack.count(), 2);
+
+    a = findNodeById(scene, aId);
+    b = findNodeById(scene, bId);
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+    QVERIFY(!a->isVisible());
+    QVERIFY(!b->isVisible());
+
+    const GraphDocument collapsedDoc = scene.toDocument();
+    QVERIFY(collapsedDoc.collapsedGroupIds.contains(groupId));
+
+    EditorScene loaded;
+    QVERIFY(loaded.fromDocument(collapsedDoc));
+    NodeItem* loadedA = findNodeById(loaded, aId);
+    NodeItem* loadedB = findNodeById(loaded, bId);
+    QVERIFY(loadedA != nullptr);
+    QVERIFY(loadedB != nullptr);
+    QVERIFY(!loadedA->isVisible());
+    QVERIFY(!loadedB->isVisible());
+
+    QGraphicsItemGroup* loadedGroup = nullptr;
+    for (QGraphicsItem* item : loaded.items()) {
+        QGraphicsItemGroup* group = dynamic_cast<QGraphicsItemGroup*>(item);
+        if (!group) {
+            continue;
+        }
+        if (group->data(0).toString() == groupId) {
+            loadedGroup = group;
+            break;
+        }
+    }
+    QVERIFY(loadedGroup != nullptr);
+    loaded.clearSelection();
+    loadedGroup->setSelected(true);
+    QVERIFY(loaded.expandSelectionWithUndo());
+    QVERIFY(loadedA->isVisible());
+    QVERIFY(loadedB->isVisible());
+
+    undoStack.undo();
+    a = findNodeById(scene, aId);
+    b = findNodeById(scene, bId);
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+    QVERIFY(a->isVisible());
+    QVERIFY(b->isVisible());
 }
 
 void EdaSuite::obstacleRoutingToggle() {

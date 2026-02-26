@@ -6,6 +6,7 @@
 #include <QGraphicsScene>
 #include <QHash>
 #include <QPointF>
+#include <QSet>
 #include <QString>
 
 class QUndoStack;
@@ -51,6 +52,8 @@ public:
     bool sendSelectionBackwardWithUndo();
     bool groupSelectionWithUndo();
     bool ungroupSelectionWithUndo();
+    bool collapseSelectionWithUndo();
+    bool expandSelectionWithUndo();
 
     NodeItem* createNodeFromData(const NodeData& nodeData);
     EdgeItem* createEdgeFromData(const EdgeData& edgeData);
@@ -108,6 +111,8 @@ private:
     void rebuildNodeGroups();
     void clearNodeGroups();
     QGraphicsItemGroup* owningGroupItem(QGraphicsItem* item) const;
+    QSet<QString> collectSelectedGroupIds() const;
+    void refreshCollapsedVisibility();
     QPointF snapPoint(const QPointF& p) const;
     NodeItem* findNodeByIdInternal(const QString& nodeId) const;
     bool applyNodeRenameInternal(const QString& nodeId, const QString& newName, bool emitGraphChanged);
@@ -140,6 +145,7 @@ private:
     PortItem* m_pendingPort = nullptr;
     EdgeItem* m_previewEdge = nullptr;
     QHash<QString, QGraphicsItemGroup*> m_nodeGroups;
+    QSet<QString> m_collapsedGroups;
     QGraphicsItemGroup* m_draggingGroup = nullptr;
     QPointF m_draggingGroupStartPos;
     GraphDocument m_draggingGroupBefore;

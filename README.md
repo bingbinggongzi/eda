@@ -28,6 +28,7 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Routing v2 follow-up: dense parallel edges get bundle/spread offsets to reduce overlap
 - Group v2: visual group frame/title for grouped editing readability
 - Auto layout settings are persisted per document (`mode`, `X spacing`, `Y spacing`)
+- Group v3: `Collapse Group` / `Expand Group` with undo and JSON persistence (`collapsedGroups`)
 
 ## Requirements
 
