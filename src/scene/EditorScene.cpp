@@ -33,6 +33,10 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
         !qFuzzyCompare(a.autoLayoutYSpacing + 1.0, b.autoLayoutYSpacing + 1.0)) {
         return false;
     }
+    if (a.edgeBundlePolicy != b.edgeBundlePolicy ||
+        !qFuzzyCompare(a.edgeBundleSpacing + 1.0, b.edgeBundleSpacing + 1.0)) {
+        return false;
+    }
     if (a.collapsedGroupIds.size() != b.collapsedGroupIds.size()) {
         return false;
     }
@@ -153,6 +157,8 @@ EdgeItem* EditorScene::createEdge(PortItem* outputPort, PortItem* inputPort) {
 
     EdgeItem* edge = new EdgeItem(nextEdgeId(), outputPort);
     edge->setRoutingMode(m_edgeRoutingMode);
+    edge->setBundlePolicy(m_edgeBundlePolicy);
+    edge->setBundleSpacing(m_edgeBundleSpacing);
     edge->setTargetPort(inputPort);
     addItem(edge);
     const NodeItem* sourceNode = outputPort->ownerNode();
@@ -726,6 +732,8 @@ EdgeItem* EditorScene::createEdgeFromData(const EdgeData& edgeData) {
 
     EdgeItem* edge = new EdgeItem(edgeData.id, outPort);
     edge->setRoutingMode(m_edgeRoutingMode);
+    edge->setBundlePolicy(m_edgeBundlePolicy);
+    edge->setBundleSpacing(m_edgeBundleSpacing);
     edge->setTargetPort(inPort);
     addItem(edge);
     const NodeItem* sourceNode = outPort->ownerNode();
@@ -778,6 +786,9 @@ GraphDocument EditorScene::toDocument() const {
     doc.autoLayoutMode = (m_autoLayoutMode == AutoLayoutMode::Grid) ? QStringLiteral("grid") : QStringLiteral("layered");
     doc.autoLayoutXSpacing = m_autoLayoutHorizontalSpacing;
     doc.autoLayoutYSpacing = m_autoLayoutVerticalSpacing;
+    doc.edgeBundlePolicy =
+        (m_edgeBundlePolicy == EdgeBundlePolicy::Directional) ? QStringLiteral("directional") : QStringLiteral("centered");
+    doc.edgeBundleSpacing = m_edgeBundleSpacing;
     doc.collapsedGroupIds = m_collapsedGroups.values().toVector();
 
     for (QGraphicsItem* item : items()) {
@@ -846,6 +857,10 @@ bool EditorScene::fromDocument(const GraphDocument& document) {
         : AutoLayoutMode::Layered;
     m_autoLayoutHorizontalSpacing = std::max<qreal>(40.0, document.autoLayoutXSpacing);
     m_autoLayoutVerticalSpacing = std::max<qreal>(40.0, document.autoLayoutYSpacing);
+    m_edgeBundlePolicy = document.edgeBundlePolicy.compare(QStringLiteral("directional"), Qt::CaseInsensitive) == 0
+        ? EdgeBundlePolicy::Directional
+        : EdgeBundlePolicy::Centered;
+    m_edgeBundleSpacing = std::max<qreal>(0.0, document.edgeBundleSpacing);
     m_collapsedGroups = QSet<QString>(document.collapsedGroupIds.begin(), document.collapsedGroupIds.end());
 
     for (const NodeData& node : document.nodes) {
@@ -909,10 +924,46 @@ void EditorScene::setEdgeRoutingMode(EdgeRoutingMode mode) {
             edge->setRoutingMode(mode);
         }
     }
+    emit graphChanged();
 }
 
 EdgeRoutingMode EditorScene::edgeRoutingMode() const {
     return m_edgeRoutingMode;
+}
+
+void EditorScene::setEdgeBundlePolicy(EdgeBundlePolicy policy) {
+    if (m_edgeBundlePolicy == policy) {
+        return;
+    }
+    m_edgeBundlePolicy = policy;
+    for (QGraphicsItem* item : items()) {
+        if (EdgeItem* edge = dynamic_cast<EdgeItem*>(item)) {
+            edge->setBundlePolicy(policy);
+        }
+    }
+    emit graphChanged();
+}
+
+EdgeBundlePolicy EditorScene::edgeBundlePolicy() const {
+    return m_edgeBundlePolicy;
+}
+
+void EditorScene::setEdgeBundleSpacing(qreal spacing) {
+    const qreal clamped = std::max<qreal>(0.0, spacing);
+    if (qFuzzyCompare(m_edgeBundleSpacing + 1.0, clamped + 1.0)) {
+        return;
+    }
+    m_edgeBundleSpacing = clamped;
+    for (QGraphicsItem* item : items()) {
+        if (EdgeItem* edge = dynamic_cast<EdgeItem*>(item)) {
+            edge->setBundleSpacing(clamped);
+        }
+    }
+    emit graphChanged();
+}
+
+qreal EditorScene::edgeBundleSpacing() const {
+    return m_edgeBundleSpacing;
 }
 
 void EditorScene::setAutoLayoutMode(AutoLayoutMode mode) {

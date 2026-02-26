@@ -201,6 +201,8 @@ bool GraphSerializer::saveToFile(const GraphDocument& document, const QString& f
     root[QStringLiteral("autoLayoutMode")] = document.autoLayoutMode;
     root[QStringLiteral("autoLayoutXSpacing")] = document.autoLayoutXSpacing;
     root[QStringLiteral("autoLayoutYSpacing")] = document.autoLayoutYSpacing;
+    root[QStringLiteral("edgeBundlePolicy")] = document.edgeBundlePolicy;
+    root[QStringLiteral("edgeBundleSpacing")] = document.edgeBundleSpacing;
     QJsonArray collapsedGroups;
     for (const QString& groupId : document.collapsedGroupIds) {
         if (!groupId.isEmpty()) {
@@ -279,6 +281,13 @@ bool GraphSerializer::loadFromFile(GraphDocument* document, const QString& fileP
     }
     document->autoLayoutXSpacing = std::max(40.0, root.value(QStringLiteral("autoLayoutXSpacing")).toDouble(240.0));
     document->autoLayoutYSpacing = std::max(40.0, root.value(QStringLiteral("autoLayoutYSpacing")).toDouble(140.0));
+    document->edgeBundlePolicy = root.value(QStringLiteral("edgeBundlePolicy")).toString(QStringLiteral("centered"));
+    if (document->edgeBundlePolicy.compare(QStringLiteral("directional"), Qt::CaseInsensitive) == 0) {
+        document->edgeBundlePolicy = QStringLiteral("directional");
+    } else {
+        document->edgeBundlePolicy = QStringLiteral("centered");
+    }
+    document->edgeBundleSpacing = std::max(0.0, root.value(QStringLiteral("edgeBundleSpacing")).toDouble(18.0));
     document->collapsedGroupIds.clear();
     const QJsonArray collapsedGroups = root.value(QStringLiteral("collapsedGroups")).toArray();
     for (const QJsonValue& value : collapsedGroups) {

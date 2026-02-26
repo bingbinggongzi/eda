@@ -71,6 +71,10 @@ public:
     void setPlacementType(const QString& typeName);
     void setEdgeRoutingMode(EdgeRoutingMode mode);
     EdgeRoutingMode edgeRoutingMode() const;
+    void setEdgeBundlePolicy(EdgeBundlePolicy policy);
+    EdgeBundlePolicy edgeBundlePolicy() const;
+    void setEdgeBundleSpacing(qreal spacing);
+    qreal edgeBundleSpacing() const;
     void setAutoLayoutMode(AutoLayoutMode mode);
     AutoLayoutMode autoLayoutMode() const;
     void setAutoLayoutSpacing(qreal horizontal, qreal vertical);
@@ -154,6 +158,8 @@ private:
     InteractionMode m_mode = InteractionMode::Select;
     QString m_placementType;
     EdgeRoutingMode m_edgeRoutingMode = EdgeRoutingMode::Manhattan;
+    EdgeBundlePolicy m_edgeBundlePolicy = EdgeBundlePolicy::Centered;
+    qreal m_edgeBundleSpacing = 18.0;
     AutoLayoutMode m_autoLayoutMode = AutoLayoutMode::Layered;
     qreal m_autoLayoutHorizontalSpacing = 240.0;
     qreal m_autoLayoutVerticalSpacing = 140.0;

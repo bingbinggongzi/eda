@@ -252,6 +252,7 @@ private slots:
     void obstacleRoutingToggle();
     void obstacleRoutingDirectionalBias();
     void parallelEdgeBundleSpread();
+    void bundlePolicyAndSpacingPersistence();
     void toolboxMimeDropAccepted();
     void fileLifecycleNewSaveAsClose();
     void fileLifecycleOpenAndDirtyPrompt();
@@ -268,6 +269,8 @@ void EdaSuite::serializerRoundtrip() {
     src.autoLayoutMode = QStringLiteral("grid");
     src.autoLayoutXSpacing = 360.0;
     src.autoLayoutYSpacing = 210.0;
+    src.edgeBundlePolicy = QStringLiteral("directional");
+    src.edgeBundleSpacing = 28.0;
     src.collapsedGroupIds = {QStringLiteral("G_1")};
     src.nodes.push_back(NodeData{QStringLiteral("N_1"),
                                  QStringLiteral("Voter"),
@@ -313,6 +316,8 @@ void EdaSuite::serializerRoundtrip() {
     QCOMPARE(dst.autoLayoutMode, src.autoLayoutMode);
     QCOMPARE(dst.autoLayoutXSpacing, src.autoLayoutXSpacing);
     QCOMPARE(dst.autoLayoutYSpacing, src.autoLayoutYSpacing);
+    QCOMPARE(dst.edgeBundlePolicy, src.edgeBundlePolicy);
+    QCOMPARE(dst.edgeBundleSpacing, src.edgeBundleSpacing);
     QCOMPARE(dst.nodes.size(), src.nodes.size());
     QCOMPARE(dst.edges.size(), src.edges.size());
     QCOMPARE(dst.nodes[0].id, src.nodes[0].id);
@@ -353,6 +358,8 @@ void EdaSuite::serializerLegacyMigration() {
     QCOMPARE(doc.autoLayoutMode, QStringLiteral("layered"));
     QCOMPARE(doc.autoLayoutXSpacing, 240.0);
     QCOMPARE(doc.autoLayoutYSpacing, 140.0);
+    QCOMPARE(doc.edgeBundlePolicy, QStringLiteral("centered"));
+    QCOMPARE(doc.edgeBundleSpacing, 18.0);
     QVERIFY(doc.collapsedGroupIds.isEmpty());
     QCOMPARE(doc.nodes.size(), 2);
     QVERIFY(doc.nodes[0].ports.size() >= 2);
@@ -388,6 +395,8 @@ void EdaSuite::sceneRoundtrip() {
     EditorScene scene;
     scene.setAutoLayoutMode(AutoLayoutMode::Grid);
     scene.setAutoLayoutSpacing(300.0, 170.0);
+    scene.setEdgeBundlePolicy(EdgeBundlePolicy::Directional);
+    scene.setEdgeBundleSpacing(26.0);
     NodeItem* n1 = scene.createNode(QStringLiteral("Voter"), QPointF(100.0, 100.0));
     NodeItem* n2 = scene.createNode(QStringLiteral("Sum"), QPointF(350.0, 140.0));
     QVERIFY(n1 != nullptr);
@@ -407,6 +416,8 @@ void EdaSuite::sceneRoundtrip() {
     QCOMPARE(loaded.autoLayoutMode(), AutoLayoutMode::Grid);
     QCOMPARE(loaded.autoLayoutHorizontalSpacing(), 300.0);
     QCOMPARE(loaded.autoLayoutVerticalSpacing(), 170.0);
+    QCOMPARE(loaded.edgeBundlePolicy(), EdgeBundlePolicy::Directional);
+    QCOMPARE(loaded.edgeBundleSpacing(), 26.0);
     QCOMPARE(countNodes(loaded), 2);
     QCOMPARE(countEdges(loaded), 1);
     NodeItem* loadedN1 = findNodeById(loaded, n1->nodeId());
@@ -1020,6 +1031,56 @@ void EdaSuite::parallelEdgeBundleSpread() {
     std::sort(trunkXs.begin(), trunkXs.end());
     QVERIFY(std::abs(trunkXs[1] - trunkXs[0]) >= 10.0);
     QVERIFY(std::abs(trunkXs[2] - trunkXs[1]) >= 10.0);
+}
+
+void EdaSuite::bundlePolicyAndSpacingPersistence() {
+    EditorScene scene;
+    scene.setSnapToGrid(false);
+    scene.setEdgeRoutingMode(EdgeRoutingMode::Manhattan);
+
+    NodeItem* source = scene.createNode(QStringLiteral("tm_Node"), QPointF(120.0, 220.0));
+    NodeItem* target = scene.createNode(QStringLiteral("Voter"), QPointF(620.0, 180.0));
+    QVERIFY(source != nullptr);
+    QVERIFY(target != nullptr);
+    QVERIFY(source->firstOutputPort() != nullptr);
+    QVERIFY(target->inputPorts().size() >= 3);
+
+    scene.setEdgeBundlePolicy(EdgeBundlePolicy::Centered);
+    scene.setEdgeBundleSpacing(20.0);
+    QVector<EdgeItem*> edges;
+    for (int i = 0; i < 3; ++i) {
+        EdgeItem* edge = scene.createEdge(source->firstOutputPort(), target->inputPorts()[i]);
+        QVERIFY(edge != nullptr);
+        edges.push_back(edge);
+    }
+
+    QSet<int> centeredY;
+    for (EdgeItem* edge : edges) {
+        const QVector<QPointF> points = pathPolyline(edge->path());
+        QVERIFY(points.size() >= 4);
+        centeredY.insert(qRound(points[2].y()));
+    }
+    QCOMPARE(centeredY.size(), 1);
+
+    scene.setEdgeBundlePolicy(EdgeBundlePolicy::Directional);
+    scene.setEdgeBundleSpacing(24.0);
+
+    QSet<int> directionalY;
+    for (EdgeItem* edge : edges) {
+        const QVector<QPointF> points = pathPolyline(edge->path());
+        QVERIFY(points.size() >= 5);
+        directionalY.insert(qRound(points[2].y()));
+    }
+    QVERIFY(directionalY.size() >= 3);
+
+    const GraphDocument doc = scene.toDocument();
+    QCOMPARE(doc.edgeBundlePolicy, QStringLiteral("directional"));
+    QCOMPARE(doc.edgeBundleSpacing, 24.0);
+
+    EditorScene loaded;
+    QVERIFY(loaded.fromDocument(doc));
+    QCOMPARE(loaded.edgeBundlePolicy(), EdgeBundlePolicy::Directional);
+    QCOMPARE(loaded.edgeBundleSpacing(), 24.0);
 }
 
 void EdaSuite::toolboxMimeDropAccepted() {

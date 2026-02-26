@@ -7,6 +7,7 @@
 #include <QPainterPath>
 #include <QPen>
 #include <QSet>
+#include <QtGlobal>
 
 #include <algorithm>
 #include <cmath>
@@ -16,7 +17,6 @@
 
 namespace {
 constexpr qreal kAnchorOffset = 24.0;
-constexpr qreal kBundleSpacing = 18.0;
 constexpr qreal kGridStep = 20.0;
 constexpr qreal kObstaclePadding = 14.0;
 constexpr int kMaxVisitedCells = 80000;
@@ -112,7 +112,7 @@ qreal parallelBundleOffset(const EdgeItem* edge) {
     }
 
     const qreal centeredIndex = static_cast<qreal>(index) - (static_cast<qreal>(siblings.size() - 1) * 0.5);
-    return centeredIndex * kBundleSpacing;
+    return centeredIndex * std::max<qreal>(0.0, edge->bundleSpacing());
 }
 
 void appendLineTo(QPainterPath* path, const QPointF& point) {
@@ -375,13 +375,36 @@ QPainterPath buildManhattanPath(const QPointF& start,
                                 const QPointF& end,
                                 const QPointF& startAnchor,
                                 const QPointF& endAnchor,
-                                qreal bundleOffset) {
+                                qreal bundleOffset,
+                                EdgeBundlePolicy bundlePolicy) {
     QPainterPath path(start);
     appendLineTo(&path, startAnchor);
 
-    const qreal midX = ((startAnchor.x() + endAnchor.x()) * 0.5) + bundleOffset;
-    appendLineTo(&path, QPointF(midX, startAnchor.y()));
-    appendLineTo(&path, QPointF(midX, endAnchor.y()));
+    const qreal dx = std::abs(endAnchor.x() - startAnchor.x());
+    const qreal dy = std::abs(endAnchor.y() - startAnchor.y());
+    const bool verticalDominant = dy > dx;
+
+    if (bundlePolicy == EdgeBundlePolicy::Directional) {
+        if (verticalDominant) {
+            const qreal midY = (startAnchor.y() + endAnchor.y()) * 0.5;
+            const qreal shiftedX = startAnchor.x() + bundleOffset;
+            appendLineTo(&path, QPointF(shiftedX, startAnchor.y()));
+            appendLineTo(&path, QPointF(shiftedX, midY));
+            appendLineTo(&path, QPointF(endAnchor.x() + bundleOffset, midY));
+            appendLineTo(&path, QPointF(endAnchor.x() + bundleOffset, endAnchor.y()));
+        } else {
+            const qreal midX = (startAnchor.x() + endAnchor.x()) * 0.5;
+            const qreal shiftedY = startAnchor.y() + bundleOffset;
+            appendLineTo(&path, QPointF(startAnchor.x(), shiftedY));
+            appendLineTo(&path, QPointF(midX, shiftedY));
+            appendLineTo(&path, QPointF(midX, endAnchor.y() + bundleOffset));
+            appendLineTo(&path, QPointF(endAnchor.x(), endAnchor.y() + bundleOffset));
+        }
+    } else {
+        const qreal midX = ((startAnchor.x() + endAnchor.x()) * 0.5) + bundleOffset;
+        appendLineTo(&path, QPointF(midX, startAnchor.y()));
+        appendLineTo(&path, QPointF(midX, endAnchor.y()));
+    }
 
     appendLineTo(&path, endAnchor);
     appendLineTo(&path, end);
@@ -395,7 +418,8 @@ QPainterPath buildObstaclePath(const QPointF& start,
                               QGraphicsScene* scene,
                               const NodeItem* sourceNode,
                               const NodeItem* targetNode,
-                              qreal bundleOffset) {
+                              qreal bundleOffset,
+                              EdgeBundlePolicy bundlePolicy) {
     auto preferredExitDirection = [](qreal offset) {
         if (std::abs(offset) < 0.1) {
             return RouteDir::None;
@@ -409,10 +433,21 @@ QPainterPath buildObstaclePath(const QPointF& start,
         return offset > 0.0 ? RouteDir::Left : RouteDir::Right;
     };
 
+    const qreal dx = std::abs(endAnchor.x() - startAnchor.x());
+    const qreal dy = std::abs(endAnchor.y() - startAnchor.y());
+    const bool verticalDominant = dy > dx;
+    const bool directional = (bundlePolicy == EdgeBundlePolicy::Directional);
+    const QPointF routedStartAnchor = directional
+        ? (verticalDominant ? QPointF(startAnchor.x() + bundleOffset, startAnchor.y())
+                            : QPointF(startAnchor.x(), startAnchor.y() + bundleOffset))
+        : QPointF(startAnchor.x() + bundleOffset, startAnchor.y());
+    const QPointF routedEndAnchor = directional
+        ? (verticalDominant ? QPointF(endAnchor.x() + bundleOffset, endAnchor.y())
+                            : QPointF(endAnchor.x(), endAnchor.y() + bundleOffset))
+        : QPointF(endAnchor.x() + bundleOffset, endAnchor.y());
+
     QPainterPath path(start);
     appendLineTo(&path, startAnchor);
-    const QPointF routedStartAnchor(startAnchor.x() + bundleOffset, startAnchor.y());
-    const QPointF routedEndAnchor(endAnchor.x() + bundleOffset, endAnchor.y());
     appendLineTo(&path, routedStartAnchor);
 
     const QVector<QPointF> route = findObstacleRoute(routedStartAnchor,
@@ -424,8 +459,14 @@ QPainterPath buildObstaclePath(const QPointF& start,
                                                      preferredArrivalDirection(endAnchor.x() - end.x()));
     if (route.isEmpty()) {
         const qreal midX = ((startAnchor.x() + endAnchor.x()) * 0.5) + bundleOffset;
-        appendLineTo(&path, QPointF(midX, startAnchor.y()));
-        appendLineTo(&path, QPointF(midX, endAnchor.y()));
+        if (directional && verticalDominant) {
+            const qreal midY = (startAnchor.y() + endAnchor.y()) * 0.5;
+            appendLineTo(&path, QPointF(startAnchor.x() + bundleOffset, midY));
+            appendLineTo(&path, QPointF(endAnchor.x() + bundleOffset, midY));
+        } else {
+            appendLineTo(&path, QPointF(midX, startAnchor.y()));
+            appendLineTo(&path, QPointF(midX, endAnchor.y()));
+        }
     } else {
         const QPointF routedStart = route.first();
         const QPointF routedEnd = route.last();
@@ -499,6 +540,14 @@ EdgeRoutingMode EdgeItem::routingMode() const {
     return m_routingMode;
 }
 
+EdgeBundlePolicy EdgeItem::bundlePolicy() const {
+    return m_bundlePolicy;
+}
+
+qreal EdgeItem::bundleSpacing() const {
+    return m_bundleSpacing;
+}
+
 void EdgeItem::setTargetPort(PortItem* port) {
     if (m_targetPort == port) {
         return;
@@ -526,6 +575,23 @@ void EdgeItem::setRoutingMode(EdgeRoutingMode mode) {
     updatePath();
 }
 
+void EdgeItem::setBundlePolicy(EdgeBundlePolicy policy) {
+    if (m_bundlePolicy == policy) {
+        return;
+    }
+    m_bundlePolicy = policy;
+    updatePath();
+}
+
+void EdgeItem::setBundleSpacing(qreal spacing) {
+    const qreal clamped = std::max<qreal>(0.0, spacing);
+    if (qFuzzyCompare(m_bundleSpacing + 1.0, clamped + 1.0)) {
+        return;
+    }
+    m_bundleSpacing = clamped;
+    updatePath();
+}
+
 void EdgeItem::updatePath() {
     if (!m_sourcePort) {
         return;
@@ -542,9 +608,10 @@ void EdgeItem::updatePath() {
 
     QPainterPath path;
     if (m_routingMode == EdgeRoutingMode::ObstacleAvoiding) {
-        path = buildObstaclePath(start, end, startAnchor, endAnchor, scene(), sourceNode, targetNode, bundleOffset);
+        path = buildObstaclePath(
+            start, end, startAnchor, endAnchor, scene(), sourceNode, targetNode, bundleOffset, m_bundlePolicy);
     } else {
-        path = buildManhattanPath(start, end, startAnchor, endAnchor, bundleOffset);
+        path = buildManhattanPath(start, end, startAnchor, endAnchor, bundleOffset, m_bundlePolicy);
     }
     setPath(path);
 

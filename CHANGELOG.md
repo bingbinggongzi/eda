@@ -23,3 +23,4 @@ All notable changes to this project should be documented in this file.
 - Added group v2 visuals (frame/title) for grouped editing workflow readability.
 - Persisted auto-layout settings (`mode`, `X spacing`, `Y spacing`) in JSON and wired dirty-state tracking.
 - Added group v3 collapse/expand behavior with undo support and `collapsedGroups` persistence.
+- Added routing v3 controls for bundle policy and spacing, including persistence and regression coverage.
