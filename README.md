@@ -20,6 +20,7 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Panel decomposition under `src/panels` (`ProjectTreePanel`, `PropertyPanel`, `PalettePanel`)
 - Palette drag-drop visual feedback (drop preview box + guide lines)
 - Lifecycle regression tests for `New/Open/Save As/Close` and unsaved prompt decisions
+- UI snapshot regression tests with golden images and pixel-tolerance compare
 
 ## Requirements
 
@@ -54,6 +55,20 @@ Stress run:
 
 ```powershell
 .\scripts\stress.ps1
+```
+
+Update UI snapshot baselines:
+
+```powershell
+$env:EDA_UPDATE_SNAPSHOTS=1
+ctest --test-dir build -C Debug --output-on-failure
+Remove-Item Env:EDA_UPDATE_SNAPSHOTS
+```
+
+or:
+
+```powershell
+.\scripts\update_snapshots.ps1
 ```
 
 ## CI

@@ -207,6 +207,7 @@ Acceptance:
 - Panel widgets decomposed into `src/panels` for project tree/property/palette ownership
 - Palette drag-drop preview feedback added in canvas foreground
 - File lifecycle regression tests added (`New/Open/Save As/Close` + dirty prompt branches)
+- UI snapshot regression framework added (golden images + tolerance compare + diff artifacts)
 
 ## 7. Current Execution Queue (Next Up)
 

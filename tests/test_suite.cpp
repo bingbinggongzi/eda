@@ -7,15 +7,146 @@
 
 #include <QCoreApplication>
 #include <QDataStream>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QImage>
+#include <QPainter>
 #include <QMimeData>
 #include <QSignalSpy>
+#include <QStatusBar>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <QUndoStack>
 
+#include <cmath>
+
 namespace {
+struct SnapshotOptions {
+    int channelTolerance = 8;
+    double maxDifferentRatio = 0.01;
+};
+
+bool snapshotUpdateModeEnabled() {
+    return qEnvironmentVariableIntValue("EDA_UPDATE_SNAPSHOTS") == 1;
+}
+
+QString snapshotBaselineDir() {
+    return QStringLiteral(EDA_SOURCE_DIR "/tests/baselines");
+}
+
+QString snapshotArtifactDir() {
+    return QDir(QDir::currentPath()).filePath(QStringLiteral("snapshot_artifacts"));
+}
+
+QImage renderWidgetSnapshot(QWidget* widget) {
+    if (!widget) {
+        return QImage();
+    }
+    QImage image(widget->size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::white);
+    QPainter painter(&image);
+    widget->render(&painter);
+    return image.convertToFormat(QImage::Format_RGBA8888);
+}
+
+bool compareOrUpdateSnapshot(const QImage& actualInput,
+                             const QString& snapshotName,
+                             const SnapshotOptions& options,
+                             QString* errorOut) {
+    const QImage actual = actualInput.convertToFormat(QImage::Format_RGBA8888);
+    if (actual.isNull()) {
+        if (errorOut) {
+            *errorOut = QStringLiteral("Actual snapshot is null: %1").arg(snapshotName);
+        }
+        return false;
+    }
+
+    QDir baselineDir(snapshotBaselineDir());
+    if (!baselineDir.exists()) {
+        baselineDir.mkpath(QStringLiteral("."));
+    }
+    const QString baselinePath = baselineDir.filePath(snapshotName + QStringLiteral(".png"));
+
+    if (snapshotUpdateModeEnabled()) {
+        if (!actual.save(baselinePath)) {
+            if (errorOut) {
+                *errorOut = QStringLiteral("Failed to save baseline: %1").arg(baselinePath);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    if (!QFileInfo::exists(baselinePath)) {
+        QDir artifactDir(snapshotArtifactDir());
+        artifactDir.mkpath(QStringLiteral("."));
+        actual.save(artifactDir.filePath(snapshotName + QStringLiteral(".actual.png")));
+        if (errorOut) {
+            *errorOut = QStringLiteral("Missing baseline: %1 (run with EDA_UPDATE_SNAPSHOTS=1)").arg(baselinePath);
+        }
+        return false;
+    }
+
+    QImage baseline(baselinePath);
+    baseline = baseline.convertToFormat(QImage::Format_RGBA8888);
+    if (baseline.size() != actual.size()) {
+        QDir artifactDir(snapshotArtifactDir());
+        artifactDir.mkpath(QStringLiteral("."));
+        baseline.save(artifactDir.filePath(snapshotName + QStringLiteral(".baseline.png")));
+        actual.save(artifactDir.filePath(snapshotName + QStringLiteral(".actual.png")));
+        if (errorOut) {
+            *errorOut = QStringLiteral("Snapshot size mismatch for %1: baseline=%2x%3 actual=%4x%5")
+                            .arg(snapshotName)
+                            .arg(baseline.width())
+                            .arg(baseline.height())
+                            .arg(actual.width())
+                            .arg(actual.height());
+        }
+        return false;
+    }
+
+    QImage diff(actual.size(), QImage::Format_ARGB32);
+    int diffPixels = 0;
+    const int total = actual.width() * actual.height();
+
+    for (int y = 0; y < actual.height(); ++y) {
+        for (int x = 0; x < actual.width(); ++x) {
+            const QColor a(actual.pixel(x, y));
+            const QColor b(baseline.pixel(x, y));
+            const bool different = std::abs(a.red() - b.red()) > options.channelTolerance ||
+                                   std::abs(a.green() - b.green()) > options.channelTolerance ||
+                                   std::abs(a.blue() - b.blue()) > options.channelTolerance ||
+                                   std::abs(a.alpha() - b.alpha()) > options.channelTolerance;
+            if (different) {
+                ++diffPixels;
+                diff.setPixelColor(x, y, QColor(255, 0, 255));
+            } else {
+                const int gray = (b.red() + b.green() + b.blue()) / 3;
+                diff.setPixelColor(x, y, QColor(gray, gray, gray, 255));
+            }
+        }
+    }
+
+    const double ratio = total > 0 ? static_cast<double>(diffPixels) / static_cast<double>(total) : 0.0;
+    if (ratio > options.maxDifferentRatio) {
+        QDir artifactDir(snapshotArtifactDir());
+        artifactDir.mkpath(QStringLiteral("."));
+        baseline.save(artifactDir.filePath(snapshotName + QStringLiteral(".baseline.png")));
+        actual.save(artifactDir.filePath(snapshotName + QStringLiteral(".actual.png")));
+        diff.save(artifactDir.filePath(snapshotName + QStringLiteral(".diff.png")));
+        if (errorOut) {
+            *errorOut = QStringLiteral("Snapshot diff too large for %1: %.4f (limit %.4f)")
+                            .arg(snapshotName)
+                            .arg(ratio)
+                            .arg(options.maxDifferentRatio);
+        }
+        return false;
+    }
+
+    return true;
+}
+
 int countNodes(const EditorScene& scene) {
     int count = 0;
     for (QGraphicsItem* item : scene.items()) {
@@ -64,6 +195,8 @@ private slots:
     void toolboxMimeDropAccepted();
     void fileLifecycleNewSaveAsClose();
     void fileLifecycleOpenAndDirtyPrompt();
+    void uiSnapshotMainWindow();
+    void uiSnapshotGraphViewDragPreview();
     void stressLargeGraphBuild();
 };
 
@@ -406,6 +539,57 @@ void EdaSuite::fileLifecycleOpenAndDirtyPrompt() {
     window.setUnsavedPromptProvider([](const QString&) { return QMessageBox::Discard; });
     QVERIFY(window.closeDocument(openedIndex));
     QCOMPARE(window.documentCount(), beforeCount);
+}
+
+void EdaSuite::uiSnapshotMainWindow() {
+    MainWindow window;
+    window.resize(1400, 860);
+    window.show();
+    window.statusBar()->clearMessage();
+    QCoreApplication::processEvents();
+
+    const QImage actual = renderWidgetSnapshot(&window);
+    QString error;
+    SnapshotOptions options;
+    options.channelTolerance = 10;
+    options.maxDifferentRatio = 0.02;
+    QVERIFY2(compareOrUpdateSnapshot(actual, QStringLiteral("main_window_default"), options, &error), qPrintable(error));
+}
+
+void EdaSuite::uiSnapshotGraphViewDragPreview() {
+    class TestGraphView final : public GraphView {
+    public:
+        using GraphView::dragEnterEvent;
+        using GraphView::dragMoveEvent;
+    };
+
+    EditorScene scene;
+    scene.setSceneRect(0, 0, 1400, 900);
+
+    TestGraphView view;
+    view.resize(1000, 640);
+    view.setScene(&scene);
+    view.show();
+    QCoreApplication::processEvents();
+
+    QMimeData mime;
+    mime.setText(QStringLiteral("Voter"));
+
+    QDragEnterEvent enterEvent(QPoint(180, 120), Qt::CopyAction, &mime, Qt::NoButton, Qt::NoModifier);
+    view.dragEnterEvent(&enterEvent);
+    QVERIFY(enterEvent.isAccepted());
+
+    QDragMoveEvent moveEvent(QPoint(260, 180), Qt::CopyAction, &mime, Qt::NoButton, Qt::NoModifier);
+    view.dragMoveEvent(&moveEvent);
+    QVERIFY(moveEvent.isAccepted());
+
+    QCoreApplication::processEvents();
+    const QImage actual = renderWidgetSnapshot(&view);
+    QString error;
+    SnapshotOptions options;
+    options.channelTolerance = 8;
+    options.maxDifferentRatio = 0.015;
+    QVERIFY2(compareOrUpdateSnapshot(actual, QStringLiteral("graph_view_drag_preview"), options, &error), qPrintable(error));
 }
 
 void EdaSuite::stressLargeGraphBuild() {

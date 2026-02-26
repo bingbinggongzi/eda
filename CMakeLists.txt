@@ -119,6 +119,7 @@ if(BUILD_TESTING)
     )
 
     target_include_directories(eda_tests PRIVATE src)
+    target_compile_definitions(eda_tests PRIVATE EDA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     target_link_libraries(eda_tests PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Test)
     add_test(NAME eda_tests COMMAND eda_tests)
 
