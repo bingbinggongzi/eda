@@ -1,6 +1,6 @@
 # EDA Editor Iteration Plan
 
-Last updated: 2026-02-25
+Last updated: 2026-02-26
 
 ## 1. Goal
 
@@ -211,8 +211,8 @@ Acceptance:
 
 ## 7. Current Execution Queue (Next Up)
 
-1. Routing v2: improve obstacle avoidance quality (fewer bends, stronger directional constraints)
-2. Auto layout: provide one-click layered/grid arrangement for selected graph
+1. Auto layout: provide one-click layered/grid arrangement for selected graph
+2. Routing v2 follow-up: add route bundling/spread strategy for dense parallel edges
 
 ## 8. Merge Quality Gates
 

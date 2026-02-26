@@ -18,7 +18,13 @@ namespace {
 constexpr qreal kAnchorOffset = 24.0;
 constexpr qreal kGridStep = 20.0;
 constexpr qreal kObstaclePadding = 14.0;
-constexpr int kMaxVisitedCells = 25000;
+constexpr int kMaxVisitedCells = 80000;
+constexpr int kStepCost = 10;
+constexpr int kTurnPenalty = 7;
+constexpr int kReversePenalty = 12;
+constexpr int kStartDirectionPenalty = 20;
+constexpr int kGoalDirectionPenalty = 18;
+constexpr int kDirectionPreferenceDepth = 2;
 
 struct Cell {
     int x = 0;
@@ -28,6 +34,29 @@ struct Cell {
         return x == other.x && y == other.y;
     }
 };
+
+enum class RouteDir : quint8 {
+    None = 0,
+    Right,
+    Left,
+    Down,
+    Up
+};
+
+struct StateKey {
+    Cell cell;
+    RouteDir dir = RouteDir::None;
+
+    bool operator==(const StateKey& other) const {
+        return cell == other.cell && dir == other.dir;
+    }
+};
+
+size_t qHash(const StateKey& key, size_t seed = 0) noexcept {
+    const quint64 packed = (static_cast<quint64>(static_cast<quint32>(key.cell.x)) << 32) |
+                           static_cast<quint32>(key.cell.y);
+    return ::qHash(packed ^ (static_cast<quint64>(key.dir) << 1), seed);
+}
 
 bool almostEqual(qreal a, qreal b) {
     return std::abs(a - b) < 0.1;
@@ -64,8 +93,52 @@ int manhattan(const Cell& a, const Cell& b) {
     return std::abs(a.x - b.x) + std::abs(a.y - b.y);
 }
 
+RouteDir routeDirFromDelta(const Cell& delta) {
+    if (delta.x > 0) {
+        return RouteDir::Right;
+    }
+    if (delta.x < 0) {
+        return RouteDir::Left;
+    }
+    if (delta.y > 0) {
+        return RouteDir::Down;
+    }
+    if (delta.y < 0) {
+        return RouteDir::Up;
+    }
+    return RouteDir::None;
+}
+
+bool isOpposite(RouteDir a, RouteDir b) {
+    return (a == RouteDir::Left && b == RouteDir::Right) || (a == RouteDir::Right && b == RouteDir::Left) ||
+           (a == RouteDir::Up && b == RouteDir::Down) || (a == RouteDir::Down && b == RouteDir::Up);
+}
+
+int weightedHeuristic(const Cell& from, const Cell& goal, RouteDir currentDir, RouteDir preferredGoalDir) {
+    int heuristic = manhattan(from, goal) * kStepCost;
+    if (currentDir != RouteDir::None && preferredGoalDir != RouteDir::None && currentDir != preferredGoalDir) {
+        heuristic += 2;
+    }
+    return heuristic;
+}
+
 bool areCollinear(const QPointF& a, const QPointF& b, const QPointF& c) {
     return (almostEqual(a.x(), b.x()) && almostEqual(b.x(), c.x())) || (almostEqual(a.y(), b.y()) && almostEqual(b.y(), c.y()));
+}
+
+bool isSameDirectionCollinear(const QPointF& a, const QPointF& b, const QPointF& c) {
+    if (!areCollinear(a, b, c)) {
+        return false;
+    }
+    if (almostEqual(a.x(), b.x()) && almostEqual(b.x(), c.x())) {
+        const qreal first = b.y() - a.y();
+        const qreal second = c.y() - b.y();
+        return first * second >= 0.0;
+    }
+
+    const qreal first = b.x() - a.x();
+    const qreal second = c.x() - b.x();
+    return first * second >= 0.0;
 }
 
 QVector<QRectF> collectObstacleRects(QGraphicsScene* scene, const NodeItem* sourceNode, const NodeItem* targetNode) {
@@ -104,7 +177,9 @@ QVector<QPointF> findObstacleRoute(const QPointF& startAnchor,
                                    const QPointF& endAnchor,
                                    QGraphicsScene* scene,
                                    const NodeItem* sourceNode,
-                                   const NodeItem* targetNode) {
+                                   const NodeItem* targetNode,
+                                   RouteDir preferredStartDir,
+                                   RouteDir preferredGoalDir) {
     const QVector<QRectF> obstacles = collectObstacleRects(scene, sourceNode, targetNode);
     if (obstacles.isEmpty()) {
         return {};
@@ -142,7 +217,7 @@ QVector<QPointF> findObstacleRoute(const QPointF& startAnchor,
     struct OpenEntry {
         int f = 0;
         int g = 0;
-        Cell cell;
+        StateKey state;
     };
 
     auto compare = [](const OpenEntry& a, const OpenEntry& b) {
@@ -153,39 +228,39 @@ QVector<QPointF> findObstacleRoute(const QPointF& startAnchor,
     };
 
     std::priority_queue<OpenEntry, std::vector<OpenEntry>, decltype(compare)> open(compare);
-    QHash<quint64, int> gScore;
-    QHash<quint64, quint64> cameFrom;
-    QSet<quint64> closed;
+    QHash<StateKey, int> gScore;
+    QHash<StateKey, StateKey> cameFrom;
+    QSet<StateKey> closed;
 
-    open.push(OpenEntry{manhattan(startCell, goalCell), 0, startCell});
-    gScore.insert(startKey, 0);
+    const StateKey startState{startCell, RouteDir::None};
+    open.push(OpenEntry{weightedHeuristic(startCell, goalCell, RouteDir::None, preferredGoalDir), 0, startState});
+    gScore.insert(startState, 0);
 
     int visited = 0;
     while (!open.empty() && visited < kMaxVisitedCells) {
         const OpenEntry current = open.top();
         open.pop();
 
-        const quint64 currentKey = cellKey(current.cell);
-        if (closed.contains(currentKey)) {
+        if (closed.contains(current.state)) {
             continue;
         }
-        if (currentKey == goalKey) {
+        if (current.state.cell == goalCell) {
             QVector<Cell> cells;
-            cells.push_back(goalCell);
-            quint64 cursor = goalKey;
-            while (cursor != startKey) {
+            StateKey cursor = current.state;
+            cells.push_front(cursor.cell);
+            while (!(cursor == startState)) {
                 if (!cameFrom.contains(cursor)) {
                     return {};
                 }
                 cursor = cameFrom.value(cursor);
-                cells.push_front(cellFromKey(cursor));
+                cells.push_front(cursor.cell);
             }
 
             QVector<QPointF> route;
             route.reserve(cells.size());
             for (const Cell& cell : cells) {
                 const QPointF pt = cellToPoint(cell);
-                if (route.size() >= 2 && areCollinear(route[route.size() - 2], route.last(), pt)) {
+                if (route.size() >= 2 && isSameDirectionCollinear(route[route.size() - 2], route.last(), pt)) {
                     route.back() = pt;
                 } else {
                     route.push_back(pt);
@@ -194,30 +269,53 @@ QVector<QPointF> findObstacleRoute(const QPointF& startAnchor,
             return route;
         }
 
-        closed.insert(currentKey);
+        closed.insert(current.state);
         ++visited;
 
         static const Cell kDirections[] = {Cell{1, 0}, Cell{-1, 0}, Cell{0, 1}, Cell{0, -1}};
         for (const Cell& step : kDirections) {
-            const Cell next{current.cell.x + step.x, current.cell.y + step.y};
+            const RouteDir stepDir = routeDirFromDelta(step);
+            const Cell next{current.state.cell.x + step.x, current.state.cell.y + step.y};
             if (!inBounds(next) || isBlocked(next)) {
                 continue;
             }
 
-            const quint64 nextKey = cellKey(next);
-            if (closed.contains(nextKey)) {
+            const StateKey nextState{next, stepDir};
+            if (closed.contains(nextState)) {
                 continue;
             }
 
-            const int tentativeG = current.g + 1;
-            const int known = gScore.value(nextKey, std::numeric_limits<int>::max());
+            int stepCost = kStepCost;
+            if (current.state.dir != RouteDir::None && current.state.dir != stepDir) {
+                stepCost += kTurnPenalty;
+                if (isOpposite(current.state.dir, stepDir)) {
+                    stepCost += kReversePenalty;
+                }
+            }
+
+            const int startDistance = manhattan(startCell, current.state.cell);
+            if (preferredStartDir != RouteDir::None && startDistance < kDirectionPreferenceDepth &&
+                isOpposite(stepDir, preferredStartDir)) {
+                continue;
+            }
+            if (preferredStartDir != RouteDir::None && startDistance < kDirectionPreferenceDepth && stepDir != preferredStartDir) {
+                stepCost += kStartDirectionPenalty;
+            }
+
+            const int goalDistance = manhattan(next, goalCell);
+            if (preferredGoalDir != RouteDir::None && goalDistance <= kDirectionPreferenceDepth && stepDir != preferredGoalDir) {
+                stepCost += kGoalDirectionPenalty;
+            }
+
+            const int tentativeG = current.g + stepCost;
+            const int known = gScore.value(nextState, std::numeric_limits<int>::max());
             if (tentativeG >= known) {
                 continue;
             }
 
-            cameFrom.insert(nextKey, currentKey);
-            gScore.insert(nextKey, tentativeG);
-            open.push(OpenEntry{tentativeG + manhattan(next, goalCell), tentativeG, next});
+            cameFrom.insert(nextState, current.state);
+            gScore.insert(nextState, tentativeG);
+            open.push(OpenEntry{tentativeG + weightedHeuristic(next, goalCell, stepDir, preferredGoalDir), tentativeG, nextState});
         }
     }
 
@@ -244,10 +342,29 @@ QPainterPath buildObstaclePath(const QPointF& start,
                               QGraphicsScene* scene,
                               const NodeItem* sourceNode,
                               const NodeItem* targetNode) {
+    auto preferredExitDirection = [](qreal offset) {
+        if (std::abs(offset) < 0.1) {
+            return RouteDir::None;
+        }
+        return offset > 0.0 ? RouteDir::Right : RouteDir::Left;
+    };
+    auto preferredArrivalDirection = [](qreal offset) {
+        if (std::abs(offset) < 0.1) {
+            return RouteDir::None;
+        }
+        return offset > 0.0 ? RouteDir::Left : RouteDir::Right;
+    };
+
     QPainterPath path(start);
     appendLineTo(&path, startAnchor);
 
-    const QVector<QPointF> route = findObstacleRoute(startAnchor, endAnchor, scene, sourceNode, targetNode);
+    const QVector<QPointF> route = findObstacleRoute(startAnchor,
+                                                     endAnchor,
+                                                     scene,
+                                                     sourceNode,
+                                                     targetNode,
+                                                     preferredExitDirection(startAnchor.x() - start.x()),
+                                                     preferredArrivalDirection(endAnchor.x() - end.x()));
     if (route.isEmpty()) {
         const qreal midX = (startAnchor.x() + endAnchor.x()) * 0.5;
         appendLineTo(&path, QPointF(midX, startAnchor.y()));

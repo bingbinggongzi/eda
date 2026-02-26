@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QPainter>
+#include <QPainterPath>
 #include <QMimeData>
 #include <QSignalSpy>
 #include <QStatusBar>
@@ -189,6 +190,42 @@ NodeItem* findNodeById(EditorScene& scene, const QString& nodeId) {
     }
     return nullptr;
 }
+
+QVector<QPointF> pathPolyline(const QPainterPath& path) {
+    QVector<QPointF> points;
+    points.reserve(path.elementCount());
+    for (int i = 0; i < path.elementCount(); ++i) {
+        const QPainterPath::Element e = path.elementAt(i);
+        const QPointF p(e.x, e.y);
+        if (!points.isEmpty()) {
+            const QPointF prev = points.last();
+            if (std::abs(prev.x() - p.x()) < 0.1 && std::abs(prev.y() - p.y()) < 0.1) {
+                continue;
+            }
+        }
+        points.push_back(p);
+    }
+    return points;
+}
+
+int pathTurnCount(const QVector<QPointF>& points) {
+    if (points.size() < 3) {
+        return 0;
+    }
+
+    int turns = 0;
+    QPointF previousDelta = points[1] - points[0];
+    for (int i = 2; i < points.size(); ++i) {
+        const QPointF currentDelta = points[i] - points[i - 1];
+        const bool previousHorizontal = std::abs(previousDelta.x()) > std::abs(previousDelta.y());
+        const bool currentHorizontal = std::abs(currentDelta.x()) > std::abs(currentDelta.y());
+        if (previousHorizontal != currentHorizontal) {
+            ++turns;
+        }
+        previousDelta = currentDelta;
+    }
+    return turns;
+}
 }  // namespace
 
 class EdaSuite : public QObject {
@@ -203,6 +240,7 @@ private slots:
     void edgeConnectionRules();
     void granularCommandMerge();
     void obstacleRoutingToggle();
+    void obstacleRoutingDirectionalBias();
     void toolboxMimeDropAccepted();
     void fileLifecycleNewSaveAsClose();
     void fileLifecycleOpenAndDirtyPrompt();
@@ -477,6 +515,41 @@ void EdaSuite::obstacleRoutingToggle() {
     QCOMPARE(edge->routingMode(), EdgeRoutingMode::ObstacleAvoiding);
     const QRectF avoidBounds = edge->path().boundingRect();
     QVERIFY(avoidBounds.height() > manhattanBounds.height() + 10.0);
+}
+
+void EdaSuite::obstacleRoutingDirectionalBias() {
+    EditorScene scene;
+    scene.setSnapToGrid(false);
+
+    NodeItem* source = scene.createNode(QStringLiteral("tm_Node"), QPointF(560.0, 220.0));
+    NodeItem* target = scene.createNode(QStringLiteral("tm_Node"), QPointF(160.0, 260.0));
+    // Keep one unrelated obstacle so obstacle routing path-search is always used.
+    NodeItem* unrelatedObstacle = scene.createNode(QStringLiteral("tm_Node"), QPointF(960.0, 80.0));
+    QVERIFY(source != nullptr);
+    QVERIFY(target != nullptr);
+    QVERIFY(unrelatedObstacle != nullptr);
+
+    EdgeItem* edge = scene.createEdge(source->firstOutputPort(), target->firstInputPort());
+    QVERIFY(edge != nullptr);
+    scene.setEdgeRoutingMode(EdgeRoutingMode::ObstacleAvoiding);
+
+    const QVector<QPointF> points = pathPolyline(edge->path());
+    QVERIFY(points.size() >= 5);
+    // `start -> startAnchor` is guaranteed by construction. The segment after that should not backtrack.
+    const QPointF startAnchor = points[1];
+    const QPointF firstAfterAnchor = points[2];
+    const QString directionMessage =
+        QStringLiteral("startAnchor=(%1,%2) firstAfterAnchor=(%3,%4) points=%5")
+            .arg(startAnchor.x(), 0, 'f', 1)
+            .arg(startAnchor.y(), 0, 'f', 1)
+            .arg(firstAfterAnchor.x(), 0, 'f', 1)
+            .arg(firstAfterAnchor.y(), 0, 'f', 1)
+            .arg(points.size());
+    const QByteArray directionMessageUtf8 = directionMessage.toUtf8();
+    QVERIFY2(firstAfterAnchor.x() >= startAnchor.x() - 10.0, directionMessageUtf8.constData());
+
+    const int turns = pathTurnCount(points);
+    QVERIFY(turns <= 6);
 }
 
 void EdaSuite::toolboxMimeDropAccepted() {
