@@ -18,6 +18,7 @@ NodeItem::NodeItem(const QString& nodeId,
     setFlag(QGraphicsItem::ItemSendsScenePositionChanges, true);
     setFlag(QGraphicsItem::ItemSendsGeometryChanges, true);
     setZValue(1.0);
+    setTransformOriginPoint(m_size.width() * 0.5, m_size.height() * 0.5);
 }
 
 QRectF NodeItem::boundingRect() const {
@@ -138,7 +139,8 @@ bool NodeItem::setPropertyValue(const QString& key, const QString& value) {
 }
 
 QVariant NodeItem::itemChange(GraphicsItemChange change, const QVariant& value) {
-    if (change == QGraphicsItem::ItemPositionHasChanged) {
+    if (change == QGraphicsItem::ItemPositionHasChanged || change == QGraphicsItem::ItemRotationHasChanged ||
+        change == QGraphicsItem::ItemTransformHasChanged) {
         for (PortItem* port : m_inputPorts) {
             if (port) {
                 port->updateConnectedEdges();

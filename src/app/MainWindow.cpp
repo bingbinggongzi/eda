@@ -203,6 +203,18 @@ void MainWindow::setupMenusAndToolbar() {
     deleteAction->setShortcut(QKeySequence::Delete);
     QAction* autoLayoutAction = editMenu->addAction(QStringLiteral("Auto Layout"));
     autoLayoutAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+L")));
+    editMenu->addSeparator();
+    QAction* rotateCwAction = editMenu->addAction(QStringLiteral("Rotate +90"));
+    rotateCwAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));
+    QAction* rotateCcwAction = editMenu->addAction(QStringLiteral("Rotate -90"));
+    rotateCcwAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+R")));
+    editMenu->addSeparator();
+    QAction* bringFrontAction = editMenu->addAction(QStringLiteral("Bring To Front"));
+    bringFrontAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+]")));
+    QAction* sendBackAction = editMenu->addAction(QStringLiteral("Send To Back"));
+    sendBackAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+[")));
+    QAction* bringForwardAction = editMenu->addAction(QStringLiteral("Bring Forward"));
+    QAction* sendBackwardAction = editMenu->addAction(QStringLiteral("Send Backward"));
 
     runMenu->addAction(style()->standardIcon(QStyle::SP_MediaPlay), QStringLiteral("Run"));
     runMenu->addAction(style()->standardIcon(QStyle::SP_MediaStop), QStringLiteral("Stop"));
@@ -219,6 +231,8 @@ void MainWindow::setupMenusAndToolbar() {
     toolBar->addSeparator();
     toolBar->addAction(clearAction);
     toolBar->addAction(autoLayoutAction);
+    toolBar->addAction(rotateCwAction);
+    toolBar->addAction(rotateCcwAction);
     toolBar->addSeparator();
     toolBar->addAction(style()->standardIcon(QStyle::SP_MediaPlay), QStringLiteral("Run"));
 
@@ -272,6 +286,72 @@ void MainWindow::setupMenusAndToolbar() {
             return;
         }
         statusBar()->showMessage(QStringLiteral("Auto layout skipped"), 1200);
+    });
+
+    connect(rotateCwAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->rotateSelectionWithUndo(90.0)) {
+            statusBar()->showMessage(QStringLiteral("Rotate +90"), 1200);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Rotate skipped"), 1200);
+        }
+    });
+
+    connect(rotateCcwAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->rotateSelectionWithUndo(-90.0)) {
+            statusBar()->showMessage(QStringLiteral("Rotate -90"), 1200);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Rotate skipped"), 1200);
+        }
+    });
+
+    connect(bringFrontAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->bringSelectionToFrontWithUndo()) {
+            statusBar()->showMessage(QStringLiteral("Bring to front"), 1200);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Layer operation skipped"), 1200);
+        }
+    });
+
+    connect(sendBackAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->sendSelectionToBackWithUndo()) {
+            statusBar()->showMessage(QStringLiteral("Send to back"), 1200);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Layer operation skipped"), 1200);
+        }
+    });
+
+    connect(bringForwardAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->bringSelectionForwardWithUndo()) {
+            statusBar()->showMessage(QStringLiteral("Bring forward"), 1200);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Layer operation skipped"), 1200);
+        }
+    });
+
+    connect(sendBackwardAction, &QAction::triggered, this, [this]() {
+        if (!m_scene) {
+            return;
+        }
+        if (m_scene->sendSelectionBackwardWithUndo()) {
+            statusBar()->showMessage(QStringLiteral("Send backward"), 1200);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Layer operation skipped"), 1200);
+        }
     });
 }
 

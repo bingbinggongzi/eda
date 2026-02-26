@@ -37,6 +37,11 @@ public:
     bool moveNodeWithUndo(const QString& nodeId, const QPointF& newPos);
     bool setNodePropertyWithUndo(const QString& nodeId, const QString& key, const QString& value);
     bool autoLayoutWithUndo(bool selectedOnly = true);
+    bool rotateSelectionWithUndo(qreal deltaDegrees);
+    bool bringSelectionToFrontWithUndo();
+    bool sendSelectionToBackWithUndo();
+    bool bringSelectionForwardWithUndo();
+    bool sendSelectionBackwardWithUndo();
 
     NodeItem* createNodeFromData(const NodeData& nodeData);
     EdgeItem* createEdgeFromData(const EdgeData& edgeData);
@@ -94,6 +99,7 @@ private:
     bool hasEdgeBetweenPorts(PortItem* outputPort, PortItem* inputPort) const;
     bool inputPortHasConnection(PortItem* inputPort) const;
     PortItem* pickPortAt(const QPointF& scenePos) const;
+    QVector<NodeItem*> collectSelectedNodes() const;
     QVector<NodeItem*> collectLayoutNodes(bool selectedOnly) const;
     bool applyAutoLayout(const QVector<NodeItem*>& nodes);
     void finishConnectionAt(const QPointF& scenePos, PortItem* explicitTarget = nullptr);

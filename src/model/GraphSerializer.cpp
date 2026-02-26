@@ -24,6 +24,8 @@ QJsonObject toJson(const NodeData& node) {
     o[QStringLiteral("y")] = node.position.y();
     o[QStringLiteral("w")] = node.size.width();
     o[QStringLiteral("h")] = node.size.height();
+    o[QStringLiteral("rotation")] = node.rotationDegrees;
+    o[QStringLiteral("z")] = node.z;
 
     QJsonArray ports;
     for (const PortData& p : node.ports) {
@@ -73,6 +75,8 @@ bool fromJson(const QJsonObject& o, NodeData* out) {
     out->name = o.value(QStringLiteral("name")).toString();
     out->position = QPointF(o.value(QStringLiteral("x")).toDouble(), o.value(QStringLiteral("y")).toDouble());
     out->size = QSizeF(o.value(QStringLiteral("w")).toDouble(120.0), o.value(QStringLiteral("h")).toDouble(72.0));
+    out->rotationDegrees = o.value(QStringLiteral("rotation")).toDouble(0.0);
+    out->z = o.value(QStringLiteral("z")).toDouble(1.0);
     out->ports.clear();
     out->properties.clear();
 

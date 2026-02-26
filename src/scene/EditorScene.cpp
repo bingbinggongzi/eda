@@ -15,6 +15,7 @@
 #include <QMap>
 #include <QRegularExpression>
 #include <QSet>
+#include <QtGlobal>
 #include <QUndoStack>
 
 namespace {
@@ -28,7 +29,9 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
     };
     auto sameNode = [&](const NodeData& n1, const NodeData& n2) {
         if (n1.id != n2.id || n1.type != n2.type || n1.name != n2.name || n1.position != n2.position || n1.size != n2.size ||
-            n1.ports.size() != n2.ports.size() || n1.properties.size() != n2.properties.size()) {
+            !qFuzzyCompare(n1.rotationDegrees + 1.0, n2.rotationDegrees + 1.0) ||
+            !qFuzzyCompare(n1.z + 1.0, n2.z + 1.0) || n1.ports.size() != n2.ports.size() ||
+            n1.properties.size() != n2.properties.size()) {
             return false;
         }
         for (int i = 0; i < n1.ports.size(); ++i) {
@@ -102,6 +105,8 @@ NodeItem* EditorScene::createNodeFromData(const NodeData& nodeData) {
         return nullptr;
     }
     node->setPos(nodeData.position);
+    node->setRotation(nodeData.rotationDegrees);
+    node->setZValue(nodeData.z);
     addItem(node);
 
     updateCounterFromId(nodeData.id, &m_nodeCounter);
@@ -225,6 +230,223 @@ bool EditorScene::autoLayoutWithUndo(bool selectedOnly) {
     return true;
 }
 
+bool EditorScene::rotateSelectionWithUndo(qreal deltaDegrees) {
+    if (qFuzzyIsNull(deltaDegrees)) {
+        return false;
+    }
+
+    const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
+    if (selectedNodes.isEmpty()) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    bool changed = false;
+    for (NodeItem* node : selectedNodes) {
+        if (!node) {
+            continue;
+        }
+        const qreal nextRotation = node->rotation() + deltaDegrees;
+        if (qFuzzyCompare(node->rotation() + 1.0, nextRotation + 1.0)) {
+            continue;
+        }
+        node->setRotation(nextRotation);
+        changed = true;
+    }
+
+    if (!changed) {
+        return false;
+    }
+
+    emit graphChanged();
+    onSelectionChangedInternal();
+
+    if (!m_undoStack) {
+        return true;
+    }
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Rotate"), true));
+    }
+    return true;
+}
+
+bool EditorScene::bringSelectionToFrontWithUndo() {
+    const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
+    if (selectedNodes.isEmpty()) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    qreal maxZ = 1.0;
+    for (QGraphicsItem* item : items()) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            maxZ = std::max(maxZ, node->zValue());
+        }
+    }
+
+    QVector<NodeItem*> ordered = selectedNodes;
+    std::sort(ordered.begin(), ordered.end(), [](const NodeItem* a, const NodeItem* b) { return a->zValue() < b->zValue(); });
+
+    bool changed = false;
+    qreal next = maxZ + 1.0;
+    for (NodeItem* node : ordered) {
+        if (!node) {
+            continue;
+        }
+        if (qFuzzyCompare(node->zValue() + 1.0, next + 1.0)) {
+            next += 1.0;
+            continue;
+        }
+        node->setZValue(next);
+        next += 1.0;
+        changed = true;
+    }
+
+    if (!changed) {
+        return false;
+    }
+
+    emit graphChanged();
+    if (!m_undoStack) {
+        return true;
+    }
+
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Bring To Front"), true));
+    }
+    return true;
+}
+
+bool EditorScene::sendSelectionToBackWithUndo() {
+    const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
+    if (selectedNodes.isEmpty()) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    qreal minZ = 1.0;
+    bool initialized = false;
+    for (QGraphicsItem* item : items()) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            minZ = initialized ? std::min(minZ, node->zValue()) : node->zValue();
+            initialized = true;
+        }
+    }
+
+    QVector<NodeItem*> ordered = selectedNodes;
+    std::sort(ordered.begin(), ordered.end(), [](const NodeItem* a, const NodeItem* b) { return a->zValue() < b->zValue(); });
+
+    bool changed = false;
+    qreal next = minZ - static_cast<qreal>(ordered.size());
+    for (NodeItem* node : ordered) {
+        if (!node) {
+            continue;
+        }
+        if (qFuzzyCompare(node->zValue() + 1.0, next + 1.0)) {
+            next += 1.0;
+            continue;
+        }
+        node->setZValue(next);
+        next += 1.0;
+        changed = true;
+    }
+
+    if (!changed) {
+        return false;
+    }
+
+    emit graphChanged();
+    if (!m_undoStack) {
+        return true;
+    }
+
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Send To Back"), true));
+    }
+    return true;
+}
+
+bool EditorScene::bringSelectionForwardWithUndo() {
+    const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
+    if (selectedNodes.isEmpty()) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    QVector<NodeItem*> ordered = selectedNodes;
+    std::sort(ordered.begin(), ordered.end(), [](const NodeItem* a, const NodeItem* b) { return a->zValue() > b->zValue(); });
+
+    bool changed = false;
+    for (NodeItem* node : ordered) {
+        if (!node) {
+            continue;
+        }
+        const qreal next = node->zValue() + 1.0;
+        if (qFuzzyCompare(node->zValue() + 1.0, next + 1.0)) {
+            continue;
+        }
+        node->setZValue(next);
+        changed = true;
+    }
+
+    if (!changed) {
+        return false;
+    }
+
+    emit graphChanged();
+    if (!m_undoStack) {
+        return true;
+    }
+
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Bring Forward"), true));
+    }
+    return true;
+}
+
+bool EditorScene::sendSelectionBackwardWithUndo() {
+    const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
+    if (selectedNodes.isEmpty()) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    QVector<NodeItem*> ordered = selectedNodes;
+    std::sort(ordered.begin(), ordered.end(), [](const NodeItem* a, const NodeItem* b) { return a->zValue() < b->zValue(); });
+
+    bool changed = false;
+    for (NodeItem* node : ordered) {
+        if (!node) {
+            continue;
+        }
+        const qreal next = node->zValue() - 1.0;
+        if (qFuzzyCompare(node->zValue() + 1.0, next + 1.0)) {
+            continue;
+        }
+        node->setZValue(next);
+        changed = true;
+    }
+
+    if (!changed) {
+        return false;
+    }
+
+    emit graphChanged();
+    if (!m_undoStack) {
+        return true;
+    }
+
+    const GraphDocument after = toDocument();
+    if (!areDocumentsEquivalent(before, after)) {
+        m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Send Backward"), true));
+    }
+    return true;
+}
+
 void EditorScene::deleteSelectionWithUndo() {
     const QList<QGraphicsItem*> selected = selectedItems();
     if (selected.isEmpty()) {
@@ -330,6 +552,8 @@ GraphDocument EditorScene::toDocument() const {
             nodeData.name = node->displayName();
             nodeData.position = node->scenePos();
             nodeData.size = node->nodeSize();
+            nodeData.rotationDegrees = node->rotation();
+            nodeData.z = node->zValue();
 
             for (PortItem* port : node->inputPorts()) {
                 PortData p;
@@ -712,6 +936,21 @@ PortItem* EditorScene::pickPortAt(const QPointF& scenePos) const {
         }
     }
     return nullptr;
+}
+
+QVector<NodeItem*> EditorScene::collectSelectedNodes() const {
+    QVector<NodeItem*> selectedNodes;
+    const QList<QGraphicsItem*> selected = selectedItems();
+    selectedNodes.reserve(selected.size());
+    for (QGraphicsItem* item : selected) {
+        if (NodeItem* node = dynamic_cast<NodeItem*>(item)) {
+            selectedNodes.push_back(node);
+        }
+    }
+    std::sort(selectedNodes.begin(),
+              selectedNodes.end(),
+              [](const NodeItem* a, const NodeItem* b) { return a->nodeId() < b->nodeId(); });
+    return selectedNodes;
 }
 
 QVector<NodeItem*> EditorScene::collectLayoutNodes(bool selectedOnly) const {

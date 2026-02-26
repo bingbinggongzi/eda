@@ -25,6 +25,8 @@ struct NodeData {
     QSizeF size;
     QVector<PortData> ports;
     QVector<PropertyData> properties;
+    qreal rotationDegrees = 0.0;
+    qreal z = 1.0;
 };
 
 struct EdgeData {
