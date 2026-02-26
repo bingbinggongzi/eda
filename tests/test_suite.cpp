@@ -811,12 +811,14 @@ void EdaSuite::uiActionClickSmokeCapture() {
     QAction* clearAction = findAction(QStringLiteral("Clear Graph"));
     QAction* openAction = findAction(QStringLiteral("Open"));
     QAction* closeAction = findAction(QStringLiteral("Close Tab"));
+    QAction* autoLayoutAction = findAction(QStringLiteral("Auto Layout"));
 
     QVERIFY(newAction != nullptr);
     QVERIFY(saveAction != nullptr);
     QVERIFY(clearAction != nullptr);
     QVERIFY(openAction != nullptr);
     QVERIFY(closeAction != nullptr);
+    QVERIFY(autoLayoutAction != nullptr);
 
     saveSmokeArtifact(renderWidgetSnapshot(&window), QStringLiteral("ui_smoke_00_start.png"));
 
@@ -828,9 +830,29 @@ void EdaSuite::uiActionClickSmokeCapture() {
 
     EditorScene* scene = window.activeScene();
     QVERIFY(scene != nullptr);
-    QVERIFY(scene->createNodeWithUndo(QStringLiteral("Voter"), QPointF(240.0, 200.0)) != nullptr);
+    NodeItem* n1 = scene->createNodeWithUndo(QStringLiteral("tm_Node"), QPointF(640.0, 320.0));
+    NodeItem* n2 = scene->createNodeWithUndo(QStringLiteral("tm_Node"), QPointF(220.0, 120.0));
+    NodeItem* n3 = scene->createNodeWithUndo(QStringLiteral("tm_Node"), QPointF(380.0, 500.0));
+    QVERIFY(n1 != nullptr);
+    QVERIFY(n2 != nullptr);
+    QVERIFY(n3 != nullptr);
+    QVERIFY(scene->createEdgeWithUndo(n2->firstOutputPort(), n1->firstInputPort()) != nullptr);
+    QVERIFY(scene->createEdgeWithUndo(n1->firstOutputPort(), n3->firstInputPort()) != nullptr);
     QCoreApplication::processEvents();
     QVERIFY(window.isDocumentDirty(window.activeDocumentIndex()));
+
+    const QPointF p1Before = n1->pos();
+    const QPointF p2Before = n2->pos();
+    const QPointF p3Before = n3->pos();
+    autoLayoutAction->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(n2->pos().x() < n1->pos().x());
+    QVERIFY(n1->pos().x() < n3->pos().x());
+    QVERIFY(n1->pos() != p1Before || n2->pos() != p2Before || n3->pos() != p3Before);
+    const QString autoLayoutArtifactName = QStringLiteral("ui_smoke_015_after_auto_layout.png");
+    saveSmokeArtifact(renderWidgetSnapshot(&window), autoLayoutArtifactName);
+    const QString autoLayoutArtifactPath = QDir(snapshotArtifactDir()).filePath(autoLayoutArtifactName);
+    QVERIFY2(QFileInfo::exists(autoLayoutArtifactPath), qPrintable(autoLayoutArtifactPath));
 
     saveAction->trigger();
     QCoreApplication::processEvents();
