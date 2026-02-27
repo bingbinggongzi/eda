@@ -4,6 +4,7 @@
 #include "items/EdgeItem.h"
 #include "items/NodeItem.h"
 #include "model/GraphSerializer.h"
+#include "panels/LayerPanel.h"
 #include "panels/PalettePanel.h"
 #include "panels/ProjectTreePanel.h"
 #include "panels/PropertyPanel.h"
@@ -443,10 +444,23 @@ void MainWindow::setupLeftDocks() {
     m_propertyDock->setWidget(m_propertyPanel);
     addDockWidget(Qt::LeftDockWidgetArea, m_propertyDock);
 
+    m_layerDock = new QDockWidget(QStringLiteral("Layers"), this);
+    m_layerDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    m_layerDock->setMinimumHeight(180);
+    m_layerPanel = new LayerPanel(m_layerDock);
+    if (m_scene) {
+        m_layerPanel->setScene(m_scene);
+    }
+    m_layerDock->setWidget(m_layerPanel);
+    addDockWidget(Qt::LeftDockWidgetArea, m_layerDock);
+
     splitDockWidget(m_projectDock, m_propertyDock, Qt::Vertical);
+    splitDockWidget(m_propertyDock, m_layerDock, Qt::Vertical);
+    m_layerDock->hide();
 
     m_viewMenu->addAction(m_projectDock->toggleViewAction());
     m_viewMenu->addAction(m_propertyDock->toggleViewAction());
+    m_viewMenu->addAction(m_layerDock->toggleViewAction());
 }
 
 void MainWindow::setupRightDock() {
@@ -627,6 +641,9 @@ void MainWindow::activateEditorTab(int index) {
         if (m_propertyTable) {
             updatePropertyTable(QString(), QString(), QString(), QPointF(), 0, 0);
         }
+        if (m_layerPanel) {
+            m_layerPanel->setScene(nullptr);
+        }
         return;
     }
 
@@ -640,6 +657,9 @@ void MainWindow::activateEditorTab(int index) {
     }
     if (m_propertyTable) {
         updatePropertyTable(QString(), QString(), QString(), QPointF(), 0, 0);
+    }
+    if (m_layerPanel) {
+        m_layerPanel->setScene(m_scene);
     }
     statusBar()->showMessage(QStringLiteral("Active tab: %1").arg(m_documents[index].title), 1200);
 }

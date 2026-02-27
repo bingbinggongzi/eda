@@ -80,6 +80,14 @@ void NodeItem::setGroupId(const QString& groupId) {
     m_groupId = groupId;
 }
 
+const QString& NodeItem::layerId() const {
+    return m_layerId;
+}
+
+void NodeItem::setLayerId(const QString& layerId) {
+    m_layerId = layerId;
+}
+
 PortItem* NodeItem::addPort(const QString& portId, const QString& name, PortDirection direction) {
     PortItem* port = new PortItem(portId, name, direction, this, this);
     if (direction == PortDirection::Input) {

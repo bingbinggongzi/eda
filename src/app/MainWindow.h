@@ -25,6 +25,7 @@ class NodeItem;
 class ProjectTreePanel;
 class PropertyPanel;
 class PalettePanel;
+class LayerPanel;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -103,10 +104,12 @@ private:
     QDockWidget* m_projectDock = nullptr;
     QDockWidget* m_propertyDock = nullptr;
     QDockWidget* m_paletteDock = nullptr;
+    QDockWidget* m_layerDock = nullptr;
 
     ProjectTreePanel* m_projectPanel = nullptr;
     PropertyPanel* m_propertyPanel = nullptr;
     PalettePanel* m_palettePanel = nullptr;
+    LayerPanel* m_layerPanel = nullptr;
     QUndoGroup* m_undoGroup = nullptr;
     QAction* m_saveAction = nullptr;
     QAction* m_saveAsAction = nullptr;

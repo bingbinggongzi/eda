@@ -50,6 +50,14 @@ public:
     bool sendSelectionToBackWithUndo();
     bool bringSelectionForwardWithUndo();
     bool sendSelectionBackwardWithUndo();
+    QString createLayerWithUndo(const QString& name = QString());
+    bool renameLayerWithUndo(const QString& layerId, const QString& name);
+    bool setLayerVisibleWithUndo(const QString& layerId, bool visible);
+    bool setLayerLockedWithUndo(const QString& layerId, bool locked);
+    bool moveLayerWithUndo(const QString& layerId, int targetIndex);
+    bool deleteLayerWithUndo(const QString& layerId);
+    bool setActiveLayerWithUndo(const QString& layerId);
+    bool moveSelectionToLayerWithUndo(const QString& layerId);
     bool groupSelectionWithUndo();
     bool ungroupSelectionWithUndo();
     bool collapseSelectionWithUndo();
@@ -84,6 +92,9 @@ public:
     void setAutoLayoutSpacing(qreal horizontal, qreal vertical);
     qreal autoLayoutHorizontalSpacing() const;
     qreal autoLayoutVerticalSpacing() const;
+    QVector<LayerData> layers() const;
+    QString activeLayerId() const;
+    int layerNodeCount(const QString& layerId) const;
 
 signals:
     void selectionInfoChanged(const QString& itemType,
@@ -94,6 +105,7 @@ signals:
                               int outputCount);
     void graphChanged();
     void connectionStateChanged(bool active);
+    void layerStateChanged();
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
@@ -115,7 +127,14 @@ private:
     QString nextPortId();
     QString nextEdgeId();
     QString nextGroupId();
+    QString nextLayerId();
     void updateCounterFromId(const QString& id, int* counter);
+    void ensureLayerModel();
+    const LayerData* findLayerById(const QString& layerId) const;
+    LayerData* findLayerByIdMutable(const QString& layerId);
+    bool isLayerVisible(const QString& layerId) const;
+    bool isLayerLocked(const QString& layerId) const;
+    void sanitizeNodeLayers();
     void rebuildNodeGroups();
     void clearNodeGroups();
     QGraphicsItemGroup* owningGroupItem(QGraphicsItem* item) const;
@@ -149,6 +168,7 @@ private:
     int m_portCounter = 1;
     int m_edgeCounter = 1;
     int m_groupCounter = 1;
+    int m_layerCounter = 1;
     bool m_snapToGrid = true;
 
     PortItem* m_pendingPort = nullptr;
@@ -170,4 +190,6 @@ private:
     AutoLayoutMode m_autoLayoutMode = AutoLayoutMode::Layered;
     qreal m_autoLayoutHorizontalSpacing = 240.0;
     qreal m_autoLayoutVerticalSpacing = 140.0;
+    QVector<LayerData> m_layers;
+    QString m_activeLayerId;
 };

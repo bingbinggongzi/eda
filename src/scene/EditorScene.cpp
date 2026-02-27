@@ -28,6 +28,9 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
     if (a.nodes.size() != b.nodes.size() || a.edges.size() != b.edges.size()) {
         return false;
     }
+    if (a.layers.size() != b.layers.size() || a.activeLayerId != b.activeLayerId) {
+        return false;
+    }
     if (a.autoLayoutMode != b.autoLayoutMode ||
         !qFuzzyCompare(a.autoLayoutXSpacing + 1.0, b.autoLayoutXSpacing + 1.0) ||
         !qFuzzyCompare(a.autoLayoutYSpacing + 1.0, b.autoLayoutYSpacing + 1.0)) {
@@ -49,6 +52,15 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
         return false;
     }
 
+    auto sameLayer = [](const LayerData& l1, const LayerData& l2) {
+        return l1.id == l2.id && l1.name == l2.name && l1.visible == l2.visible && l1.locked == l2.locked;
+    };
+    for (int i = 0; i < a.layers.size(); ++i) {
+        if (!sameLayer(a.layers[i], b.layers[i])) {
+            return false;
+        }
+    }
+
     auto samePort = [](const PortData& p1, const PortData& p2) {
         return p1.id == p2.id && p1.name == p2.name && p1.direction == p2.direction;
     };
@@ -56,7 +68,7 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
         if (n1.id != n2.id || n1.type != n2.type || n1.name != n2.name || n1.position != n2.position || n1.size != n2.size ||
             !qFuzzyCompare(n1.rotationDegrees + 1.0, n2.rotationDegrees + 1.0) ||
             !qFuzzyCompare(n1.z + 1.0, n2.z + 1.0) || n1.groupId != n2.groupId || n1.ports.size() != n2.ports.size() ||
-            n1.properties.size() != n2.properties.size()) {
+            n1.properties.size() != n2.properties.size() || n1.layerId != n2.layerId) {
             return false;
         }
         for (int i = 0; i < n1.ports.size(); ++i) {
@@ -93,6 +105,7 @@ bool areDocumentsEquivalent(const GraphDocument& a, const GraphDocument& b) {
 
 EditorScene::EditorScene(QObject* parent)
     : QGraphicsScene(parent) {
+    ensureLayerModel();
     connect(this, &QGraphicsScene::selectionChanged, this, &EditorScene::onSelectionChangedInternal);
 }
 
@@ -101,13 +114,19 @@ EditorScene::~EditorScene() {
 }
 
 NodeItem* EditorScene::createNode(const QString& typeName, const QPointF& scenePos) {
+    ensureLayerModel();
     NodeItem* node = buildNodeByType(typeName);
     if (!node) {
         return nullptr;
     }
+    node->setLayerId(m_activeLayerId);
     node->setPos(snapPoint(scenePos));
+    node->setFlag(QGraphicsItem::ItemIsMovable, !isLayerLocked(node->layerId()));
+    node->setFlag(QGraphicsItem::ItemIsSelectable, !isLayerLocked(node->layerId()));
     addItem(node);
+    refreshCollapsedVisibility();
     emit graphChanged();
+    emit layerStateChanged();
     return node;
 }
 
@@ -125,6 +144,7 @@ NodeItem* EditorScene::createNodeWithUndo(const QString& typeName, const QPointF
 }
 
 NodeItem* EditorScene::createNodeFromData(const NodeData& nodeData) {
+    ensureLayerModel();
     NodeItem* node = buildNode(nodeData.id, nodeData.type, nodeData.name, nodeData.size, nodeData.ports, nodeData.properties);
     if (!node) {
         return nullptr;
@@ -133,11 +153,17 @@ NodeItem* EditorScene::createNodeFromData(const NodeData& nodeData) {
     node->setRotation(nodeData.rotationDegrees);
     node->setZValue(nodeData.z);
     node->setGroupId(nodeData.groupId);
+    node->setLayerId(nodeData.layerId.isEmpty() ? m_activeLayerId : nodeData.layerId);
+    node->setFlag(QGraphicsItem::ItemIsMovable, !isLayerLocked(node->layerId()));
+    node->setFlag(QGraphicsItem::ItemIsSelectable, !isLayerLocked(node->layerId()));
     addItem(node);
 
     updateCounterFromId(nodeData.id, &m_nodeCounter);
     if (!nodeData.groupId.isEmpty()) {
         updateCounterFromId(nodeData.groupId, &m_groupCounter);
+    }
+    if (!node->layerId().isEmpty()) {
+        updateCounterFromId(node->layerId(), &m_layerCounter);
     }
     for (const PortData& port : nodeData.ports) {
         updateCounterFromId(port.id, &m_portCounter);
@@ -499,6 +525,240 @@ bool EditorScene::sendSelectionBackwardWithUndo() {
     return true;
 }
 
+QString EditorScene::createLayerWithUndo(const QString& name) {
+    ensureLayerModel();
+    const GraphDocument before = toDocument();
+
+    LayerData layer;
+    layer.id = nextLayerId();
+    layer.name = name.trimmed().isEmpty() ? QStringLiteral("Layer %1").arg(m_layers.size() + 1) : name.trimmed();
+    layer.visible = true;
+    layer.locked = false;
+    m_layers.push_back(layer);
+    m_activeLayerId = layer.id;
+    refreshCollapsedVisibility();
+    emit graphChanged();
+    emit layerStateChanged();
+
+    if (m_undoStack) {
+        const GraphDocument after = toDocument();
+        if (!areDocumentsEquivalent(before, after)) {
+            m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Add Layer"), true));
+        }
+    }
+    return layer.id;
+}
+
+bool EditorScene::renameLayerWithUndo(const QString& layerId, const QString& name) {
+    const QString trimmed = name.trimmed();
+    if (layerId.isEmpty() || trimmed.isEmpty()) {
+        return false;
+    }
+    LayerData* layer = findLayerByIdMutable(layerId);
+    if (!layer || layer->name == trimmed) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    layer->name = trimmed;
+    emit graphChanged();
+    emit layerStateChanged();
+
+    if (m_undoStack) {
+        const GraphDocument after = toDocument();
+        if (!areDocumentsEquivalent(before, after)) {
+            m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Rename Layer"), true));
+        }
+    }
+    return true;
+}
+
+bool EditorScene::setLayerVisibleWithUndo(const QString& layerId, bool visible) {
+    LayerData* layer = findLayerByIdMutable(layerId);
+    if (!layer || layer->visible == visible) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    layer->visible = visible;
+    refreshCollapsedVisibility();
+    onSelectionChangedInternal();
+    emit graphChanged();
+    emit layerStateChanged();
+
+    if (m_undoStack) {
+        const GraphDocument after = toDocument();
+        if (!areDocumentsEquivalent(before, after)) {
+            m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Layer Visibility"), true));
+        }
+    }
+    return true;
+}
+
+bool EditorScene::setLayerLockedWithUndo(const QString& layerId, bool locked) {
+    LayerData* layer = findLayerByIdMutable(layerId);
+    if (!layer || layer->locked == locked) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    layer->locked = locked;
+    refreshCollapsedVisibility();
+    onSelectionChangedInternal();
+    emit graphChanged();
+    emit layerStateChanged();
+
+    if (m_undoStack) {
+        const GraphDocument after = toDocument();
+        if (!areDocumentsEquivalent(before, after)) {
+            m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Layer Lock"), true));
+        }
+    }
+    return true;
+}
+
+bool EditorScene::moveLayerWithUndo(const QString& layerId, int targetIndex) {
+    if (layerId.isEmpty() || m_layers.isEmpty()) {
+        return false;
+    }
+    int currentIndex = -1;
+    for (int i = 0; i < m_layers.size(); ++i) {
+        if (m_layers[i].id == layerId) {
+            currentIndex = i;
+            break;
+        }
+    }
+    if (currentIndex < 0) {
+        return false;
+    }
+    const int lastIndex = static_cast<int>(m_layers.size()) - 1;
+    const int clampedTarget = std::max(0, std::min(targetIndex, lastIndex));
+    if (clampedTarget == currentIndex) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    const LayerData moving = m_layers.takeAt(currentIndex);
+    m_layers.insert(clampedTarget, moving);
+    emit graphChanged();
+    emit layerStateChanged();
+
+    if (m_undoStack) {
+        const GraphDocument after = toDocument();
+        if (!areDocumentsEquivalent(before, after)) {
+            m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Move Layer"), true));
+        }
+    }
+    return true;
+}
+
+bool EditorScene::deleteLayerWithUndo(const QString& layerId) {
+    ensureLayerModel();
+    if (layerId.isEmpty() || m_layers.size() <= 1) {
+        return false;
+    }
+
+    int index = -1;
+    for (int i = 0; i < m_layers.size(); ++i) {
+        if (m_layers[i].id == layerId) {
+            index = i;
+            break;
+        }
+    }
+    if (index < 0) {
+        return false;
+    }
+
+    const int fallbackIndex = (index == 0) ? 1 : 0;
+    const QString fallbackLayerId = m_layers[fallbackIndex].id;
+
+    const GraphDocument before = toDocument();
+    for (QGraphicsItem* item : items()) {
+        NodeItem* node = dynamic_cast<NodeItem*>(item);
+        if (!node || node->layerId() != layerId) {
+            continue;
+        }
+        node->setLayerId(fallbackLayerId);
+    }
+    m_layers.removeAt(index);
+    if (m_activeLayerId == layerId) {
+        m_activeLayerId = fallbackLayerId;
+    }
+    sanitizeNodeLayers();
+    refreshCollapsedVisibility();
+    onSelectionChangedInternal();
+    emit graphChanged();
+    emit layerStateChanged();
+
+    if (m_undoStack) {
+        const GraphDocument after = toDocument();
+        if (!areDocumentsEquivalent(before, after)) {
+            m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Delete Layer"), true));
+        }
+    }
+    return true;
+}
+
+bool EditorScene::setActiveLayerWithUndo(const QString& layerId) {
+    if (layerId.isEmpty() || m_activeLayerId == layerId || !findLayerById(layerId)) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    m_activeLayerId = layerId;
+    emit graphChanged();
+    emit layerStateChanged();
+
+    if (m_undoStack) {
+        const GraphDocument after = toDocument();
+        if (!areDocumentsEquivalent(before, after)) {
+            m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Set Active Layer"), true));
+        }
+    }
+    return true;
+}
+
+bool EditorScene::moveSelectionToLayerWithUndo(const QString& layerId) {
+    if (layerId.isEmpty() || !findLayerById(layerId)) {
+        return false;
+    }
+    const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
+    if (selectedNodes.isEmpty()) {
+        return false;
+    }
+
+    bool hasChange = false;
+    for (NodeItem* node : selectedNodes) {
+        if (node && node->layerId() != layerId) {
+            hasChange = true;
+            break;
+        }
+    }
+    if (!hasChange) {
+        return false;
+    }
+
+    const GraphDocument before = toDocument();
+    for (NodeItem* node : selectedNodes) {
+        if (!node) {
+            continue;
+        }
+        node->setLayerId(layerId);
+    }
+    refreshCollapsedVisibility();
+    onSelectionChangedInternal();
+    emit graphChanged();
+    emit layerStateChanged();
+
+    if (m_undoStack) {
+        const GraphDocument after = toDocument();
+        if (!areDocumentsEquivalent(before, after)) {
+            m_undoStack->push(new DocumentStateCommand(this, before, after, QStringLiteral("Move To Layer"), true));
+        }
+    }
+    return true;
+}
+
 bool EditorScene::groupSelectionWithUndo() {
     const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
     if (selectedNodes.size() < 2) {
@@ -808,8 +1068,13 @@ void EditorScene::clearGraph() {
     m_portCounter = 1;
     m_edgeCounter = 1;
     m_groupCounter = 1;
+    m_layerCounter = 1;
     m_collapsedGroups.clear();
+    m_layers.clear();
+    m_activeLayerId.clear();
+    ensureLayerModel();
     emit graphChanged();
+    emit layerStateChanged();
 }
 
 GraphDocument EditorScene::toDocument() const {
@@ -830,6 +1095,8 @@ GraphDocument EditorScene::toDocument() const {
         doc.edgeBundleScope = QStringLiteral("global");
     }
     doc.edgeBundleSpacing = m_edgeBundleSpacing;
+    doc.layers = m_layers;
+    doc.activeLayerId = m_activeLayerId;
     doc.collapsedGroupIds = m_collapsedGroups.values().toVector();
 
     for (QGraphicsItem* item : items()) {
@@ -843,6 +1110,7 @@ GraphDocument EditorScene::toDocument() const {
             nodeData.rotationDegrees = node->rotation();
             nodeData.z = node->zValue();
             nodeData.groupId = node->groupId();
+            nodeData.layerId = node->layerId();
 
             for (PortItem* port : node->inputPorts()) {
                 PortData p;
@@ -893,6 +1161,12 @@ GraphDocument EditorScene::toDocument() const {
 
 bool EditorScene::fromDocument(const GraphDocument& document) {
     clearGraph();
+    m_layers = document.layers;
+    m_activeLayerId = document.activeLayerId;
+    ensureLayerModel();
+    for (const LayerData& layer : m_layers) {
+        updateCounterFromId(layer.id, &m_layerCounter);
+    }
     m_autoLayoutMode = document.autoLayoutMode.compare(QStringLiteral("grid"), Qt::CaseInsensitive) == 0
         ? AutoLayoutMode::Grid
         : AutoLayoutMode::Layered;
@@ -923,10 +1197,12 @@ bool EditorScene::fromDocument(const GraphDocument& document) {
         createEdgeFromData(edge);
     }
 
+    sanitizeNodeLayers();
     rebuildNodeGroups();
     refreshCollapsedVisibility();
 
     emit graphChanged();
+    emit layerStateChanged();
     return true;
 }
 
@@ -1082,6 +1358,28 @@ qreal EditorScene::autoLayoutHorizontalSpacing() const {
 
 qreal EditorScene::autoLayoutVerticalSpacing() const {
     return m_autoLayoutVerticalSpacing;
+}
+
+QVector<LayerData> EditorScene::layers() const {
+    return m_layers;
+}
+
+QString EditorScene::activeLayerId() const {
+    return m_activeLayerId;
+}
+
+int EditorScene::layerNodeCount(const QString& layerId) const {
+    if (layerId.isEmpty()) {
+        return 0;
+    }
+    int count = 0;
+    for (QGraphicsItem* item : items()) {
+        const NodeItem* node = dynamic_cast<const NodeItem*>(item);
+        if (node && node->layerId() == layerId) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 void EditorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
@@ -1259,6 +1557,10 @@ QString EditorScene::nextGroupId() {
     return QStringLiteral("G_%1").arg(m_groupCounter++);
 }
 
+QString EditorScene::nextLayerId() {
+    return QStringLiteral("L_%1").arg(m_layerCounter++);
+}
+
 void EditorScene::updateCounterFromId(const QString& id, int* counter) {
     if (!counter) {
         return;
@@ -1272,6 +1574,67 @@ void EditorScene::updateCounterFromId(const QString& id, int* counter) {
     const int index = match.captured(1).toInt(&ok);
     if (ok) {
         *counter = std::max(*counter, index + 1);
+    }
+}
+
+void EditorScene::ensureLayerModel() {
+    if (!m_layers.isEmpty()) {
+        if (m_activeLayerId.isEmpty() || !findLayerById(m_activeLayerId)) {
+            m_activeLayerId = m_layers.first().id;
+        }
+        return;
+    }
+
+    m_layers.push_back(LayerData{QStringLiteral("L_1"), QStringLiteral("Default"), true, false});
+    m_activeLayerId = m_layers.first().id;
+    updateCounterFromId(m_activeLayerId, &m_layerCounter);
+}
+
+const LayerData* EditorScene::findLayerById(const QString& layerId) const {
+    if (layerId.isEmpty()) {
+        return nullptr;
+    }
+    for (const LayerData& layer : m_layers) {
+        if (layer.id == layerId) {
+            return &layer;
+        }
+    }
+    return nullptr;
+}
+
+LayerData* EditorScene::findLayerByIdMutable(const QString& layerId) {
+    if (layerId.isEmpty()) {
+        return nullptr;
+    }
+    for (LayerData& layer : m_layers) {
+        if (layer.id == layerId) {
+            return &layer;
+        }
+    }
+    return nullptr;
+}
+
+bool EditorScene::isLayerVisible(const QString& layerId) const {
+    const LayerData* layer = findLayerById(layerId);
+    return !layer || layer->visible;
+}
+
+bool EditorScene::isLayerLocked(const QString& layerId) const {
+    const LayerData* layer = findLayerById(layerId);
+    return layer && layer->locked;
+}
+
+void EditorScene::sanitizeNodeLayers() {
+    ensureLayerModel();
+    const QString fallback = m_activeLayerId;
+    for (QGraphicsItem* item : items()) {
+        NodeItem* node = dynamic_cast<NodeItem*>(item);
+        if (!node) {
+            continue;
+        }
+        if (node->layerId().isEmpty() || !findLayerById(node->layerId())) {
+            node->setLayerId(fallback);
+        }
     }
 }
 
@@ -1631,16 +1994,36 @@ QSet<QString> EditorScene::collectSelectedGroupIds() const {
 }
 
 void EditorScene::refreshCollapsedVisibility() {
+    ensureLayerModel();
+    sanitizeNodeLayers();
     QHash<QString, QPointF> collapsedGroupCenters;
+    QHash<QString, bool> groupLayerVisible;
+    QHash<QString, bool> groupHasLockedNode;
     for (QGraphicsItem* item : items()) {
         NodeItem* node = dynamic_cast<NodeItem*>(item);
         if (!node) {
             continue;
         }
+        const bool layerVisible = isLayerVisible(node->layerId());
+        const bool layerLocked = isLayerLocked(node->layerId());
         const bool collapsed = !node->groupId().isEmpty() && m_collapsedGroups.contains(node->groupId());
-        node->setVisible(!collapsed);
-        if (collapsed && node->isSelected()) {
+        const bool visible = layerVisible && !collapsed;
+        node->setVisible(visible);
+        node->setFlag(QGraphicsItem::ItemIsMovable, !layerLocked);
+        node->setFlag(QGraphicsItem::ItemIsSelectable, !layerLocked);
+        if ((collapsed || layerLocked || !layerVisible) && node->isSelected()) {
             node->setSelected(false);
+        }
+        if (!node->groupId().isEmpty()) {
+            if (!groupLayerVisible.contains(node->groupId())) {
+                groupLayerVisible.insert(node->groupId(), false);
+            }
+            groupLayerVisible[node->groupId()] = groupLayerVisible.value(node->groupId()) || layerVisible;
+
+            if (!groupHasLockedNode.contains(node->groupId())) {
+                groupHasLockedNode.insert(node->groupId(), false);
+            }
+            groupHasLockedNode[node->groupId()] = groupHasLockedNode.value(node->groupId()) || layerLocked;
         }
         if (collapsed) {
             if (!collapsedGroupCenters.contains(node->groupId())) {
@@ -1665,9 +2048,13 @@ void EditorScene::refreshCollapsedVisibility() {
         }
         const QString sourceGroupId = sourceNode->groupId();
         const QString targetGroupId = targetNode->groupId();
+        const bool sourceLayerVisible = isLayerVisible(sourceNode->layerId());
+        const bool targetLayerVisible = isLayerVisible(targetNode->layerId());
         const bool sourceCollapsed = !sourceGroupId.isEmpty() && m_collapsedGroups.contains(sourceGroupId);
         const bool targetCollapsed = !targetGroupId.isEmpty() && m_collapsedGroups.contains(targetGroupId);
-        const bool hidden = sourceCollapsed && targetCollapsed && sourceGroupId == targetGroupId;
+        const bool hiddenByLayer = !sourceLayerVisible || !targetLayerVisible;
+        const bool hiddenByCollapsedGroup = sourceCollapsed && targetCollapsed && sourceGroupId == targetGroupId;
+        const bool hidden = hiddenByLayer || hiddenByCollapsedGroup;
 
         edge->setVisible(!hidden);
         if (hidden && edge->isSelected()) {
@@ -1701,6 +2088,12 @@ void EditorScene::refreshCollapsedVisibility() {
         QGraphicsItemGroup* group = it.value();
         if (!group) {
             continue;
+        }
+        const bool visible = groupLayerVisible.value(groupId, true);
+        group->setVisible(visible);
+        group->setFlag(QGraphicsItem::ItemIsMovable, !groupHasLockedNode.value(groupId, false));
+        if (!visible && group->isSelected()) {
+            group->setSelected(false);
         }
         const bool collapsed = m_collapsedGroups.contains(groupId);
         const QList<QGraphicsItem*> children = group->childItems();

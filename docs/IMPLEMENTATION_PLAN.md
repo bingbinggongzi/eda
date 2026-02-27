@@ -221,10 +221,12 @@ Acceptance:
 - Routing v4 completed with global `Balanced/Dense` profile and adaptive high-density spread
 - Group v5 completed with selective collapsed-edge passthrough and collapsed group anchor rerouting
 - Routing v5 completed with configurable bundle scope (`Global`/`Per Layer`/`Per Group`) and persistence
+- Layer v1 completed with layer model/persistence and layer panel controls (visible/lock/order/active/move-selection)
 
 ## 7. Current Execution Queue (Next Up)
 
-- No pending item in the current queue
+1. Edge editing v1: manual bend points + reset to auto-route
+2. Layer v2: layer-aware edge filtering and per-layer style profile
 
 ## 8. Merge Quality Gates
 

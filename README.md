@@ -34,6 +34,7 @@ Qt Widgets + `QGraphicsView` editor prototype for EDA-like workflow editing.
 - Routing v4: high-density `Routing Profile` (`Balanced` / `Dense`) with adaptive spread behavior
 - Group v5: collapsed groups keep cross-boundary edges visible as passthrough links, while internal edges are hidden
 - Routing v5: edge bundling scope is configurable (`Global`, `Per Layer`, `Per Group`) for dense graph readability
+- Layer v1: layered editing model with per-layer visibility/lock/order/active-layer controls and JSON persistence
 
 ## Requirements
 

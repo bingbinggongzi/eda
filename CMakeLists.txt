@@ -64,6 +64,8 @@ add_executable(eda_ui_prototype
     src/panels/PropertyPanel.cpp
     src/panels/PalettePanel.h
     src/panels/PalettePanel.cpp
+    src/panels/LayerPanel.h
+    src/panels/LayerPanel.cpp
     src/items/NodeItem.h
     src/items/NodeItem.cpp
     src/items/PortItem.h
@@ -106,6 +108,8 @@ if(BUILD_TESTING)
         src/panels/PropertyPanel.cpp
         src/panels/PalettePanel.h
         src/panels/PalettePanel.cpp
+        src/panels/LayerPanel.h
+        src/panels/LayerPanel.cpp
         src/scene/EditorScene.h
         src/scene/EditorScene.cpp
         src/items/NodeItem.h

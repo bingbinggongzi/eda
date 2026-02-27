@@ -31,6 +31,9 @@ QJsonObject toJson(const NodeData& node) {
     if (!node.groupId.isEmpty()) {
         o[QStringLiteral("groupId")] = node.groupId;
     }
+    if (!node.layerId.isEmpty()) {
+        o[QStringLiteral("layerId")] = node.layerId;
+    }
 
     QJsonArray ports;
     for (const PortData& p : node.ports) {
@@ -47,6 +50,15 @@ QJsonObject toJson(const NodeData& node) {
         properties.append(p);
     }
     o[QStringLiteral("properties")] = properties;
+    return o;
+}
+
+QJsonObject toJson(const LayerData& layer) {
+    QJsonObject o;
+    o[QStringLiteral("id")] = layer.id;
+    o[QStringLiteral("name")] = layer.name;
+    o[QStringLiteral("visible")] = layer.visible;
+    o[QStringLiteral("locked")] = layer.locked;
     return o;
 }
 
@@ -83,6 +95,7 @@ bool fromJson(const QJsonObject& o, NodeData* out) {
     out->rotationDegrees = o.value(QStringLiteral("rotation")).toDouble(0.0);
     out->z = o.value(QStringLiteral("z")).toDouble(1.0);
     out->groupId = o.value(QStringLiteral("groupId")).toString();
+    out->layerId = o.value(QStringLiteral("layerId")).toString();
     out->ports.clear();
     out->properties.clear();
 
@@ -105,6 +118,17 @@ bool fromJson(const QJsonObject& o, NodeData* out) {
         const QString val = p.value(QStringLiteral("value")).toString();
         out->properties.push_back(PropertyData{key, type, val});
     }
+    return !out->id.isEmpty();
+}
+
+bool fromJson(const QJsonObject& o, LayerData* out) {
+    if (!out) {
+        return false;
+    }
+    out->id = o.value(QStringLiteral("id")).toString();
+    out->name = o.value(QStringLiteral("name")).toString();
+    out->visible = o.value(QStringLiteral("visible")).toBool(true);
+    out->locked = o.value(QStringLiteral("locked")).toBool(false);
     return !out->id.isEmpty();
 }
 
@@ -180,11 +204,39 @@ bool migrateToCurrent(GraphDocument* document, QString* errorMessage) {
             }
         }
 
+        if (document->layers.isEmpty()) {
+            document->layers.push_back(LayerData{QStringLiteral("L_1"), QStringLiteral("Default"), true, false});
+        }
+        document->activeLayerId = document->layers.first().id;
+        for (NodeData& node : document->nodes) {
+            if (node.layerId.isEmpty()) {
+                node.layerId = document->activeLayerId;
+            }
+        }
+
         document->schemaVersion = 1;
         return true;
     }
 
     if (document->schemaVersion == 1) {
+        if (document->layers.isEmpty()) {
+            document->layers.push_back(LayerData{QStringLiteral("L_1"), QStringLiteral("Default"), true, false});
+        }
+        bool activeExists = false;
+        for (const LayerData& layer : document->layers) {
+            if (layer.id == document->activeLayerId) {
+                activeExists = true;
+                break;
+            }
+        }
+        if (!activeExists) {
+            document->activeLayerId = document->layers.first().id;
+        }
+        for (NodeData& node : document->nodes) {
+            if (node.layerId.isEmpty()) {
+                node.layerId = document->activeLayerId;
+            }
+        }
         return true;
     }
 
@@ -201,6 +253,12 @@ bool GraphSerializer::saveToFile(const GraphDocument& document, const QString& f
     root[QStringLiteral("autoLayoutMode")] = document.autoLayoutMode;
     root[QStringLiteral("autoLayoutXSpacing")] = document.autoLayoutXSpacing;
     root[QStringLiteral("autoLayoutYSpacing")] = document.autoLayoutYSpacing;
+    root[QStringLiteral("activeLayerId")] = document.activeLayerId;
+    QJsonArray layers;
+    for (const LayerData& layer : document.layers) {
+        layers.append(toJson(layer));
+    }
+    root[QStringLiteral("layers")] = layers;
     root[QStringLiteral("edgeRoutingProfile")] = document.edgeRoutingProfile;
     root[QStringLiteral("edgeBundlePolicy")] = document.edgeBundlePolicy;
     root[QStringLiteral("edgeBundleScope")] = document.edgeBundleScope;
@@ -283,6 +341,18 @@ bool GraphSerializer::loadFromFile(GraphDocument* document, const QString& fileP
     }
     document->autoLayoutXSpacing = std::max(40.0, root.value(QStringLiteral("autoLayoutXSpacing")).toDouble(240.0));
     document->autoLayoutYSpacing = std::max(40.0, root.value(QStringLiteral("autoLayoutYSpacing")).toDouble(140.0));
+    document->layers.clear();
+    const QJsonArray layers = root.value(QStringLiteral("layers")).toArray();
+    for (const QJsonValue& value : layers) {
+        LayerData layer;
+        if (fromJson(value.toObject(), &layer)) {
+            if (layer.name.isEmpty()) {
+                layer.name = layer.id;
+            }
+            document->layers.push_back(layer);
+        }
+    }
+    document->activeLayerId = root.value(QStringLiteral("activeLayerId")).toString();
     document->edgeRoutingProfile = root.value(QStringLiteral("edgeRoutingProfile")).toString(QStringLiteral("balanced"));
     if (document->edgeRoutingProfile.compare(QStringLiteral("dense"), Qt::CaseInsensitive) == 0) {
         document->edgeRoutingProfile = QStringLiteral("dense");

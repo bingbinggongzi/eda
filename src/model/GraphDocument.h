@@ -17,6 +17,13 @@ struct PropertyData {
     QString value;
 };
 
+struct LayerData {
+    QString id;
+    QString name;
+    bool visible = true;
+    bool locked = false;
+};
+
 struct NodeData {
     QString id;
     QString type;
@@ -28,6 +35,7 @@ struct NodeData {
     qreal rotationDegrees = 0.0;
     qreal z = 1.0;
     QString groupId;
+    QString layerId;
 };
 
 struct EdgeData {
@@ -43,6 +51,8 @@ struct GraphDocument {
     QString autoLayoutMode = QStringLiteral("layered");
     qreal autoLayoutXSpacing = 240.0;
     qreal autoLayoutYSpacing = 140.0;
+    QVector<LayerData> layers;
+    QString activeLayerId;
     QString edgeRoutingProfile = QStringLiteral("balanced");
     QString edgeBundlePolicy = QStringLiteral("centered");
     QString edgeBundleScope = QStringLiteral("global");

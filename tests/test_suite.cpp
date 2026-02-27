@@ -251,6 +251,7 @@ private slots:
     void groupCollapseUndoPersistenceAndNestedGuard();
     void groupCollapseEdgePassthrough();
     void groupHeaderToggleByClick();
+    void layerSystemVisibilityLockAndPersistence();
     void obstacleRoutingToggle();
     void obstacleRoutingDirectionalBias();
     void parallelEdgeBundleSpread();
@@ -272,6 +273,9 @@ void EdaSuite::serializerRoundtrip() {
     src.autoLayoutMode = QStringLiteral("grid");
     src.autoLayoutXSpacing = 360.0;
     src.autoLayoutYSpacing = 210.0;
+    src.layers = {LayerData{QStringLiteral("L_1"), QStringLiteral("Base"), true, false},
+                  LayerData{QStringLiteral("L_2"), QStringLiteral("Calc"), true, true}};
+    src.activeLayerId = QStringLiteral("L_2");
     src.edgeRoutingProfile = QStringLiteral("dense");
     src.edgeBundlePolicy = QStringLiteral("directional");
     src.edgeBundleScope = QStringLiteral("layer");
@@ -287,7 +291,8 @@ void EdaSuite::serializerRoundtrip() {
                                  {PropertyData{QStringLiteral("vote_required"), QStringLiteral("int"), QStringLiteral("2")}},
                                  15.0,
                                  3.0,
-                                 QStringLiteral("G_1")});
+                                 QStringLiteral("G_1"),
+                                 QStringLiteral("L_1")});
     src.nodes.push_back(NodeData{QStringLiteral("N_2"),
                                  QStringLiteral("Sum"),
                                  QStringLiteral("SumA"),
@@ -298,7 +303,8 @@ void EdaSuite::serializerRoundtrip() {
                                  {PropertyData{QStringLiteral("bias"), QStringLiteral("double"), QStringLiteral("0.0")}},
                                  -30.0,
                                  1.0,
-                                 QStringLiteral("G_1")});
+                                 QStringLiteral("G_1"),
+                                 QStringLiteral("L_2")});
     src.edges.push_back(EdgeData{QStringLiteral("E_1"),
                                  QStringLiteral("N_1"),
                                  QStringLiteral("P_2"),
@@ -321,6 +327,10 @@ void EdaSuite::serializerRoundtrip() {
     QCOMPARE(dst.autoLayoutMode, src.autoLayoutMode);
     QCOMPARE(dst.autoLayoutXSpacing, src.autoLayoutXSpacing);
     QCOMPARE(dst.autoLayoutYSpacing, src.autoLayoutYSpacing);
+    QCOMPARE(dst.layers.size(), src.layers.size());
+    QCOMPARE(dst.activeLayerId, src.activeLayerId);
+    QCOMPARE(dst.layers[1].name, src.layers[1].name);
+    QCOMPARE(dst.layers[1].locked, src.layers[1].locked);
     QCOMPARE(dst.edgeRoutingProfile, src.edgeRoutingProfile);
     QCOMPARE(dst.edgeBundlePolicy, src.edgeBundlePolicy);
     QCOMPARE(dst.edgeBundleScope, src.edgeBundleScope);
@@ -365,6 +375,9 @@ void EdaSuite::serializerLegacyMigration() {
     QCOMPARE(doc.autoLayoutMode, QStringLiteral("layered"));
     QCOMPARE(doc.autoLayoutXSpacing, 240.0);
     QCOMPARE(doc.autoLayoutYSpacing, 140.0);
+    QCOMPARE(doc.layers.size(), 1);
+    QCOMPARE(doc.layers[0].id, QStringLiteral("L_1"));
+    QCOMPARE(doc.activeLayerId, QStringLiteral("L_1"));
     QCOMPARE(doc.edgeRoutingProfile, QStringLiteral("balanced"));
     QCOMPARE(doc.edgeBundlePolicy, QStringLiteral("centered"));
     QCOMPARE(doc.edgeBundleScope, QStringLiteral("global"));
@@ -412,10 +425,14 @@ void EdaSuite::sceneRoundtrip() {
     NodeItem* n2 = scene.createNode(QStringLiteral("Sum"), QPointF(350.0, 140.0));
     QVERIFY(n1 != nullptr);
     QVERIFY(n2 != nullptr);
+    const QString calcLayer = scene.createLayerWithUndo(QStringLiteral("Calc"));
+    QVERIFY(!calcLayer.isEmpty());
     n1->setRotation(30.0);
     n1->setZValue(5.0);
     n1->setGroupId(QStringLiteral("G_1"));
+    n2->setLayerId(calcLayer);
     n2->setGroupId(QStringLiteral("G_1"));
+    QVERIFY(scene.setLayerLockedWithUndo(calcLayer, true));
     QVERIFY(scene.createEdge(n1->firstOutputPort(), n2->firstInputPort()) != nullptr);
 
     GraphDocument doc = scene.toDocument();
@@ -431,6 +448,8 @@ void EdaSuite::sceneRoundtrip() {
     QCOMPARE(loaded.edgeBundlePolicy(), EdgeBundlePolicy::Directional);
     QCOMPARE(loaded.edgeBundleScope(), EdgeBundleScope::PerGroup);
     QCOMPARE(loaded.edgeBundleSpacing(), 26.0);
+    QCOMPARE(loaded.layers().size(), 2);
+    QCOMPARE(loaded.activeLayerId(), calcLayer);
     QCOMPARE(countNodes(loaded), 2);
     QCOMPARE(countEdges(loaded), 1);
     NodeItem* loadedN1 = findNodeById(loaded, n1->nodeId());
@@ -441,6 +460,7 @@ void EdaSuite::sceneRoundtrip() {
     QCOMPARE(loadedN1->zValue(), 5.0);
     QCOMPARE(loadedN1->groupId(), QStringLiteral("G_1"));
     QCOMPARE(loadedN2->groupId(), QStringLiteral("G_1"));
+    QCOMPARE(loadedN2->layerId(), calcLayer);
 }
 
 void EdaSuite::undoRedoSmoke() {
@@ -1064,6 +1084,95 @@ void EdaSuite::groupHeaderToggleByClick() {
     QCoreApplication::processEvents();
     QVERIFY(a->isVisible());
     QVERIFY(b->isVisible());
+}
+
+void EdaSuite::layerSystemVisibilityLockAndPersistence() {
+    EditorScene scene;
+    scene.setSnapToGrid(false);
+    QUndoStack undoStack;
+    scene.setUndoStack(&undoStack);
+
+    NodeItem* a = scene.createNode(QStringLiteral("tm_Node"), QPointF(120.0, 140.0));
+    NodeItem* b = scene.createNode(QStringLiteral("tm_Node"), QPointF(380.0, 140.0));
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+
+    const QString aId = a->nodeId();
+    const QString bId = b->nodeId();
+    const QString defaultLayerId = scene.activeLayerId();
+    QVERIFY(!defaultLayerId.isEmpty());
+    QCOMPARE(scene.layers().size(), 1);
+
+    const QString processLayerId = scene.createLayerWithUndo(QStringLiteral("Process"));
+    QVERIFY(!processLayerId.isEmpty());
+    QCOMPARE(scene.layers().size(), 2);
+    QCOMPARE(scene.activeLayerId(), processLayerId);
+
+    a = findNodeById(scene, aId);
+    QVERIFY(a != nullptr);
+    scene.clearSelection();
+    a->setSelected(true);
+    QVERIFY(scene.moveSelectionToLayerWithUndo(processLayerId));
+    a = findNodeById(scene, aId);
+    QVERIFY(a != nullptr);
+    QCOMPARE(a->layerId(), processLayerId);
+
+    QVERIFY(scene.setLayerLockedWithUndo(processLayerId, true));
+    a = findNodeById(scene, aId);
+    QVERIFY(a != nullptr);
+    QVERIFY(!(a->flags() & QGraphicsItem::ItemIsMovable));
+
+    QVERIFY(scene.setLayerVisibleWithUndo(processLayerId, false));
+    a = findNodeById(scene, aId);
+    b = findNodeById(scene, bId);
+    QVERIFY(a != nullptr);
+    QVERIFY(b != nullptr);
+    QVERIFY(!a->isVisible());
+    QVERIFY(b->isVisible());
+
+    QVERIFY(scene.setLayerVisibleWithUndo(processLayerId, true));
+    a = findNodeById(scene, aId);
+    QVERIFY(a != nullptr);
+    QVERIFY(a->isVisible());
+
+    QVERIFY(scene.setLayerVisibleWithUndo(processLayerId, false));
+    const GraphDocument doc = scene.toDocument();
+    QCOMPARE(doc.layers.size(), 2);
+    QCOMPARE(doc.activeLayerId, processLayerId);
+    QCOMPARE(doc.nodes.size(), 2);
+    bool foundAInDoc = false;
+    for (const NodeData& node : doc.nodes) {
+        if (node.id == aId) {
+            QCOMPARE(node.layerId, processLayerId);
+            foundAInDoc = true;
+            break;
+        }
+    }
+    QVERIFY(foundAInDoc);
+
+    EditorScene loaded;
+    QVERIFY(loaded.fromDocument(doc));
+    QCOMPARE(loaded.layers().size(), 2);
+    QCOMPARE(loaded.activeLayerId(), processLayerId);
+
+    NodeItem* loadedA = findNodeById(loaded, aId);
+    NodeItem* loadedB = findNodeById(loaded, bId);
+    QVERIFY(loadedA != nullptr);
+    QVERIFY(loadedB != nullptr);
+    QCOMPARE(loadedA->layerId(), processLayerId);
+    QVERIFY(!loadedA->isVisible());
+    QVERIFY(loadedB->isVisible());
+
+    QVERIFY(loaded.setLayerVisibleWithUndo(processLayerId, true));
+    loadedA = findNodeById(loaded, aId);
+    QVERIFY(loadedA != nullptr);
+    QVERIFY(loadedA->isVisible());
+
+    QVERIFY(loaded.deleteLayerWithUndo(processLayerId));
+    loadedA = findNodeById(loaded, aId);
+    QVERIFY(loadedA != nullptr);
+    QCOMPARE(loaded.layers().size(), 1);
+    QCOMPARE(loadedA->layerId(), defaultLayerId);
 }
 
 void EdaSuite::obstacleRoutingToggle() {
