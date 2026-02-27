@@ -11,12 +11,15 @@
 #include <cmath>
 
 #include <QGraphicsSceneMouseEvent>
+#include <QGraphicsSceneContextMenuEvent>
 #include <QGraphicsItemGroup>
 #include <QGraphicsRectItem>
 #include <QGraphicsSimpleTextItem>
 #include <QGraphicsView>
 #include <QColor>
+#include <QFont>
 #include <QMap>
+#include <QMenu>
 #include <QPen>
 #include <QRegularExpression>
 #include <QSet>
@@ -1461,6 +1464,73 @@ void EditorScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
     if (connectionHandled) {
         return;
     }
+}
+
+void EditorScene::contextMenuEvent(QGraphicsSceneContextMenuEvent* event) {
+    if (!event) {
+        return;
+    }
+
+    const QTransform viewTransform = views().isEmpty() ? QTransform() : views().first()->transform();
+    QGraphicsItem* hit = itemAt(event->scenePos(), viewTransform);
+    NodeItem* targetNode = nullptr;
+    while (hit && !targetNode) {
+        targetNode = dynamic_cast<NodeItem*>(hit);
+        hit = hit->parentItem();
+    }
+
+    if (targetNode && !targetNode->isSelected()) {
+        clearSelection();
+        targetNode->setSelected(true);
+    }
+
+    const QVector<NodeItem*> selectedNodes = collectSelectedNodes();
+    if (selectedNodes.isEmpty()) {
+        QGraphicsScene::contextMenuEvent(event);
+        return;
+    }
+
+    QSet<QString> selectedLayerIds;
+    for (NodeItem* node : selectedNodes) {
+        if (node) {
+            selectedLayerIds.insert(node->layerId());
+        }
+    }
+
+    const QVector<LayerData> layerList = layers();
+    if (layerList.isEmpty()) {
+        QGraphicsScene::contextMenuEvent(event);
+        return;
+    }
+
+    QMenu menu;
+    QMenu* moveMenu = menu.addMenu(QStringLiteral("Move To Layer"));
+    QAction* selectedAction = nullptr;
+    for (const LayerData& layer : layerList) {
+        const QString title = (layer.id == activeLayerId()) ? QStringLiteral("%1 (Active)").arg(layer.name) : layer.name;
+        QAction* action = moveMenu->addAction(title);
+        action->setData(layer.id);
+        if (selectedLayerIds.size() == 1 && selectedLayerIds.contains(layer.id)) {
+            action->setEnabled(false);
+        }
+        if (layer.id == activeLayerId()) {
+            QFont font = action->font();
+            font.setBold(true);
+            action->setFont(font);
+        }
+    }
+
+    selectedAction = menu.exec(event->screenPos());
+    if (selectedAction && moveMenu->actions().contains(selectedAction)) {
+        const QString layerId = selectedAction->data().toString();
+        if (!layerId.isEmpty()) {
+            moveSelectionToLayerWithUndo(layerId);
+        }
+        event->accept();
+        return;
+    }
+
+    event->accept();
 }
 
 void EditorScene::onPortConnectionStart(PortItem* port) {

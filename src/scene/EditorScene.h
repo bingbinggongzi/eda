@@ -16,6 +16,7 @@ class NodeMoveCommand;
 class NodeRenameCommand;
 class NodePropertyCommand;
 class QGraphicsItemGroup;
+class QGraphicsSceneContextMenuEvent;
 
 enum class InteractionMode {
     Select,
@@ -111,6 +112,7 @@ protected:
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
 
 private slots:
     void onPortConnectionStart(PortItem* port);

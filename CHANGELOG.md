@@ -29,3 +29,4 @@ All notable changes to this project should be documented in this file.
 - Added group v5 selective collapsed-edge passthrough: internal group edges are hidden while cross-boundary edges stay visible and reroute to collapsed group anchors.
 - Added routing v5 bundle scope controls (`Global` / `Per Layer` / `Per Group`) with JSON persistence and dense-graph spread behavior.
 - Added layer v1 system with per-node `layerId`, layer visibility/lock/order/active state, layer panel controls, and persistence.
+- Added right-click node context menu action (`Move To Layer`) for faster layer assignment.
